@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from ..core.security import require_admin, require_teacher
 from ..db.base import get_db
 from ..services.class_service import ClassService
-from ..schemas.class import ClassCreate, ClassResponse, ClassWithStudents
+from ..schemas.class_schema import ClassCreate, ClassResponse, ClassWithStudents
 
 router = APIRouter(prefix="/classes", tags=["classes"])
 class_service = ClassService()

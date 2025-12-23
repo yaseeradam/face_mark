@@ -2,7 +2,7 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from ..db import crud, models
-from ..schemas.class import ClassCreate
+from ..schemas.class_schema import ClassCreate
 
 class ClassService:
     def __init__(self):

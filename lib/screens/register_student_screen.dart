@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:camera/camera.dart';
 import '../services/camera_service.dart';
+import '../services/face_detection_service.dart';
 import '../services/validation_service.dart';
 import '../services/api_service.dart';
 import '../widgets/common_widgets.dart';
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:path_provider/path_provider.dart';
 
 class RegisterStudentScreen extends ConsumerStatefulWidget {
   const RegisterStudentScreen({super.key});
@@ -21,6 +24,8 @@ class _RegisterStudentScreenState extends ConsumerState<RegisterStudentScreen> {
   File? _capturedImage;
   bool _isCameraInitialized = false;
   bool _isLoading = false;
+  String _faceStatus = "Position face within frame";
+  bool _isDetecting = false;
 
   @override
   void initState() {
@@ -31,12 +36,65 @@ class _RegisterStudentScreenState extends ConsumerState<RegisterStudentScreen> {
   Future<void> _initializeCamera() async {
     final success = await CameraService.initialize();
     setState(() => _isCameraInitialized = success);
+    if (success) _startFaceDetection();
+  }
+
+  void _startFaceDetection() {
+    CameraService.controller?.startImageStream((image) async {
+      if (_isDetecting) return;
+      _isDetecting = true;
+      
+      try {
+        // Convert CameraImage to File for backend detection
+        final tempFile = await _convertCameraImageToFile(image);
+        final faces = await FaceDetectionService.detectFaces(tempFile);
+        final feedback = FaceDetectionService.getQualityFeedback(faces);
+        
+        if (mounted) {
+          setState(() => _faceStatus = feedback);
+        }
+        
+        // Clean up temp file
+        await tempFile.delete();
+      } catch (e) {
+        // Handle detection error
+      } finally {
+        _isDetecting = false;
+      }
+    });
   }
 
   Future<void> _takePicture() async {
-    final image = await CameraService.takePicture();
-    if (image != null) {
-      setState(() => _capturedImage = image);
+    if (!_isCameraInitialized) return;
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      final image = await CameraService.takePicture();
+      if (image != null) {
+        // Detect faces using backend
+        final detection = await FaceDetectionService.detectFaces(image);
+        final feedback = FaceDetectionService.getQualityFeedback(detection);
+        
+        setState(() => _faceStatus = feedback);
+        
+        if (detection['success'] && detection['count'] == 1) {
+          setState(() => _capturedImage = image);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Good quality face captured!'), backgroundColor: Colors.green),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(feedback), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
@@ -61,38 +119,53 @@ class _RegisterStudentScreenState extends ConsumerState<RegisterStudentScreen> {
 
     setState(() => _isLoading = true);
     
-    // Create student first
-    final studentResult = await ApiService.createStudent({
-      'student_id': _idController.text,
-      'name': _nameController.text,
-      'class_id': _selectedClass,
-    });
-    
-    if (studentResult['success']) {
-      // Register face
-      final faceResult = await ApiService.registerFace(
-        studentResult['data']['id'],
-        _capturedImage!,
-      );
+    try {
+      // Create student first
+      final studentResult = await ApiService.createStudent({
+        'student_id': _idController.text,
+        'name': _nameController.text,
+        'class_id': _selectedClass,
+      });
       
-      setState(() => _isLoading = false);
-      
-      if (faceResult['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Student registered successfully!'), backgroundColor: Colors.green),
+      if (studentResult['success']) {
+        // Register face using production service
+        final faceResult = await FaceDetectionService.registerFace(
+          studentResult['data']['id'],
+          _capturedImage!,
         );
-        Navigator.pop(context);
+        
+        if (faceResult['success']) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Student registered successfully with face recognition!'), backgroundColor: Colors.green),
+          );
+          Navigator.pop(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Student created but face registration failed: ${faceResult['error']}'), backgroundColor: Colors.orange),
+          );
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(faceResult['error']), backgroundColor: Colors.red),
+          SnackBar(content: Text(studentResult['error']), backgroundColor: Colors.red),
         );
       }
-    } else {
-      setState(() => _isLoading = false);
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(studentResult['error']), backgroundColor: Colors.red),
+        SnackBar(content: Text('Registration failed: $e'), backgroundColor: Colors.red),
       );
+    } finally {
+      setState(() => _isLoading = false);
     }
+  }
+
+  Future<File> _convertCameraImageToFile(CameraImage image) async {
+    final directory = await getTemporaryDirectory();
+    final imagePath = '${directory.path}/temp_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    
+    final yPlane = image.planes[0];
+    final file = File(imagePath);
+    await file.writeAsBytes(yPlane.bytes);
+    return file;
   }
 
   @override

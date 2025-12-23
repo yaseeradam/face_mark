@@ -5,7 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'storage_service.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://localhost:8000';
+  static const String baseUrl = 'http://your-server-ip:8000'; // Update with your actual server IP
   static String? _token;
 
   static Future<bool> _hasConnection() async {
@@ -19,6 +19,7 @@ class ApiService {
     Map<String, dynamic>? body,
     File? file,
     Map<String, String>? fields,
+    bool retryOnAuth = true,
   }) async {
     try {
       if (!await _hasConnection()) {
@@ -55,9 +56,16 @@ class ApiService {
           return {'success': false, 'error': 'Invalid HTTP method'};
       }
 
-      if (response.statusCode == 401) {
-        await StorageService.clearToken();
-        return {'success': false, 'error': 'Session expired. Please login again.', 'needsAuth': true};
+      if (response.statusCode == 401 && retryOnAuth) {
+        // Try to refresh token
+        final refreshResult = await _refreshToken();
+        if (refreshResult['success']) {
+          // Retry the original request
+          return await _makeRequest(method, endpoint, body: body, file: file, fields: fields, retryOnAuth: false);
+        } else {
+          await StorageService.clearToken();
+          return {'success': false, 'error': 'Session expired. Please login again.', 'needsAuth': true};
+        }
       }
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -69,6 +77,32 @@ class ApiService {
       }
     } catch (e) {
       return {'success': false, 'error': 'Connection error: ${e.toString()}'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> _refreshToken() async {
+    try {
+      final refreshToken = await StorageService.getString('refresh_token');
+      if (refreshToken == null) return {'success': false};
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/refresh'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refresh_token': refreshToken}),
+      ).timeout(Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        _token = data['access_token'];
+        await StorageService.saveToken(_token!);
+        if (data['refresh_token'] != null) {
+          await StorageService.saveString('refresh_token', data['refresh_token']);
+        }
+        return {'success': true, 'data': data};
+      }
+      return {'success': false};
+    } catch (e) {
+      return {'success': false};
     }
   }
 
@@ -135,6 +169,10 @@ class ApiService {
   }
 
   // Attendance endpoints
+  static Future<Map<String, dynamic>> markAttendance(Map<String, dynamic> attendanceData) async {
+    return await _makeRequest('POST', '/attendance/mark', body: attendanceData);
+  }
+
   static Future<Map<String, dynamic>> getTodayAttendance({int? classId}) async {
     String endpoint = '/attendance/today';
     if (classId != null) endpoint += '?class_id=$classId';

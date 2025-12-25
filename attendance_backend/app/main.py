@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from .core.config import settings
 from .db.base import engine, Base
 from .ai.insightface_model import face_model
-from .api import auth, teachers, classes, students, attendance, face
+from .api import auth, teachers, classes, students, attendance, face, dashboard, reports
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -43,6 +43,8 @@ app.include_router(classes.router)
 app.include_router(students.router)
 app.include_router(attendance.router)
 app.include_router(face.router)
+app.include_router(dashboard.router)
+app.include_router(reports.router)
 
 @app.get("/")
 def root():

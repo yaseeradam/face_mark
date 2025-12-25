@@ -12,58 +12,82 @@ router = APIRouter(prefix="/students", tags=["students"])
 student_service = StudentService()
 class_service = ClassService()
 
-@router.post("/", response_model=StudentResponse)
+@router.post("/")
 async def create_student(
     student_data: StudentCreate,
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_teacher)
 ):
     """Create a new student"""
-    # Check if teacher has access to the class
-    has_access = await class_service.check_teacher_access(student_data.class_id, current_user["user_id"], db)
-    if not has_access:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this class")
-    
     try:
+        print(f"Creating student: {student_data}")
+        
+        # Check if teacher has access to the class
+        has_access = await class_service.check_teacher_access(student_data.class_id, current_user["user_id"], db)
+        if not has_access:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this class")
+        
         student = await student_service.create_student(student_data, db)
-        return StudentResponse.model_validate(student)
+        print(f"Student created: {student.id}")
+        
+        return {
+            "id": student.id,
+            "student_id": student.student_id,
+            "full_name": student.full_name,
+            "class_id": student.class_id,
+            "face_enrolled": student.face_enrolled
+        }
     except ValueError as e:
+        print(f"ValueError: {e}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating student: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@router.get("/", response_model=List[StudentWithClass])
+@router.get("/")
 async def get_students(
     class_id: Optional[int] = Query(None, description="Filter by class ID"),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_teacher)
 ):
     """Get students, optionally filtered by class"""
-    # If class_id is specified, check access
-    if class_id:
-        has_access = await class_service.check_teacher_access(class_id, current_user["user_id"], db)
-        if not has_access:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this class")
-    
-    # For non-admin teachers, only show students from their classes
-    if current_user["role"] != "admin" and not class_id:
-        # Get teacher's classes and filter students
-        teacher_classes = await class_service.get_classes(db, teacher_id=current_user["user_id"])
-        class_ids = [cls.id for cls in teacher_classes]
+    try:
+        # For admin, get all students
+        if current_user["role"] == "admin":
+            all_students = await student_service.get_students(db, class_id=class_id)
+        elif class_id:
+            # Check access for specific class
+            has_access = await class_service.check_teacher_access(class_id, current_user["user_id"], db)
+            if not has_access:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+            all_students = await student_service.get_students(db, class_id=class_id)
+        else:
+            # Get students from all teacher's classes
+            teacher_classes = await class_service.get_classes(db, teacher_id=current_user["user_id"])
+            all_students = []
+            for cls in teacher_classes:
+                students = await student_service.get_students(db, class_id=cls.id)
+                all_students.extend(students)
         
-        all_students = []
-        for cls_id in class_ids:
-            students = await student_service.get_students(db, class_id=cls_id)
-            all_students.extend(students)
-    else:
-        all_students = await student_service.get_students(db, class_id=class_id)
-    
-    result = []
-    for student in all_students:
-        student_dict = StudentWithClass.model_validate(student).model_dump()
-        if student.class_obj:
-            student_dict["class_name"] = student.class_obj.class_name
-        result.append(student_dict)
-    
-    return result
+        result = []
+        for student in all_students:
+            result.append({
+                "id": student.id,
+                "student_id": student.student_id,
+                "full_name": student.full_name,
+                "class_id": student.class_id,
+                "face_enrolled": student.face_enrolled,
+                "class_name": student.class_obj.class_name if student.class_obj else None
+            })
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting students: {e}")
+        return []
 
 @router.get("/{student_id}", response_model=StudentWithClass)
 async def get_student_by_id(

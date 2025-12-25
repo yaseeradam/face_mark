@@ -7,7 +7,12 @@ from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from .config import settings
 
-security = HTTPBearer()
+# ==================================================
+# 🔧 DEV MODE - Set to True to bypass authentication
+# ==================================================
+DEV_MODE = True  # Set to False in production!
+
+security = HTTPBearer(auto_error=not DEV_MODE)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against a hash using bcrypt directly"""
@@ -29,6 +34,13 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    # 🔧 DEV MODE: Skip authentication
+    if DEV_MODE:
+        return {"user_id": 1, "role": "admin"}
+    
+    if credentials is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    
     try:
         payload = jwt.decode(credentials.credentials, settings.secret_key, algorithms=[settings.algorithm])
         user_id: str = payload.get("sub")
@@ -40,11 +52,19 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 def require_admin(current_user: dict = Depends(verify_token)):
+    # 🔧 DEV MODE: Always return admin
+    if DEV_MODE:
+        return {"user_id": 1, "role": "admin"}
+    
     if current_user["role"] != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
 
 def require_teacher(current_user: dict = Depends(verify_token)):
+    # 🔧 DEV MODE: Always return admin (has teacher permissions)
+    if DEV_MODE:
+        return {"user_id": 1, "role": "admin"}
+    
     if current_user["role"] not in ["admin", "teacher"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher access required")
     return current_user

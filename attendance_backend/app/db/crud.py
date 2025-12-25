@@ -208,3 +208,31 @@ def check_attendance_exists(db: Session, student_id: int, class_id: int, check_d
             func.date(models.Attendance.marked_at) == check_date
         )
     ).first() is not None
+
+def get_attendance_by_date(db: Session, filter_date: date, class_id: Optional[int] = None) -> List[models.Attendance]:
+    """Get attendance records for a specific date"""
+    query = db.query(models.Attendance).filter(
+        func.date(models.Attendance.marked_at) == filter_date
+    )
+    if class_id:
+        query = query.filter(models.Attendance.class_id == class_id)
+    return query.all()
+
+def get_attendance_by_class_and_date_range(db: Session, class_id: int, start_date: date, end_date: date) -> List[models.Attendance]:
+    """Get attendance records for a class within a date range"""
+    return db.query(models.Attendance).filter(
+        and_(
+            models.Attendance.class_id == class_id,
+            func.date(models.Attendance.marked_at) >= start_date,
+            func.date(models.Attendance.marked_at) <= end_date
+        )
+    ).all()
+
+def get_attendance_by_student(db: Session, student_id: int, start_date: date = None, end_date: date = None) -> List[models.Attendance]:
+    """Get attendance records for a specific student"""
+    query = db.query(models.Attendance).filter(models.Attendance.student_id == student_id)
+    if start_date:
+        query = query.filter(func.date(models.Attendance.marked_at) >= start_date)
+    if end_date:
+        query = query.filter(func.date(models.Attendance.marked_at) <= end_date)
+    return query.all()

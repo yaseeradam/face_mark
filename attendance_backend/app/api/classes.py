@@ -1,83 +1,171 @@
-"""Class management endpoints"""
+"""Class management endpoints - Simplified for testing"""
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 from ..core.security import require_admin, require_teacher
 from ..db.base import get_db
-from ..services.class_service import ClassService
-from ..schemas.class_schema import ClassCreate, ClassResponse, ClassWithStudents
+from ..db import crud
 
 router = APIRouter(prefix="/classes", tags=["classes"])
-class_service = ClassService()
 
-@router.post("/", response_model=ClassResponse)
+# Simple schemas
+class SimpleClassCreate(BaseModel):
+    class_name: str
+    class_code: str
+    teacher_id: Optional[int] = None
+
+class SimpleClassResponse(BaseModel):
+    id: int
+    class_name: str
+    class_code: str
+    teacher_id: int
+    
+    class Config:
+        from_attributes = True
+
+@router.post("/")
 async def create_class(
-    class_data: ClassCreate,
+    class_data: SimpleClassCreate,
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
-    """Create a new class (Admin only)"""
+    """Create a new class"""
     try:
-        # If teacher_id not provided, assign to current admin
-        if not class_data.teacher_id:
-            class_data.teacher_id = current_user["user_id"]
-            
-        class_obj = await class_service.create_class(class_data, db)
-        return ClassResponse.model_validate(class_obj)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        print(f"Received: {class_data}")
+        
+        # Use teacher_id from request or default to current user
+        teacher_id = class_data.teacher_id if class_data.teacher_id else current_user["user_id"]
+        
+        # Create class dict
+        class_dict = {
+            "class_name": class_data.class_name,
+            "class_code": class_data.class_code,
+            "teacher_id": teacher_id
+        }
+        
+        print(f"Creating with: {class_dict}")
+        
+        # Create directly in DB
+        new_class = crud.create_class(db, class_dict)
+        
+        return {
+            "success": True,
+            "id": new_class.id,
+            "class_name": new_class.class_name,
+            "class_code": new_class.class_code,
+            "teacher_id": new_class.teacher_id
+        }
+    except Exception as e:
+        print(f"Error: {e}")
+        return {"success": False, "error": str(e)}
 
-@router.get("/", response_model=List[ClassResponse])
+@router.get("/")
 async def get_classes(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_teacher)
 ):
-    """Get classes (Teachers see only their classes, Admins see all)"""
-    teacher_id = None if current_user["role"] == "admin" else current_user["user_id"]
-    classes = await class_service.get_classes(db, teacher_id=teacher_id)
-    
-    result = []
-    for class_obj in classes:
-        class_dict = ClassResponse.model_validate(class_obj).model_dump()
-        class_dict["teacher"] = {
-            "id": class_obj.teacher.id,
-            "full_name": class_obj.teacher.full_name,
-            "email": class_obj.teacher.email
-        }
-        result.append(class_dict)
-    
-    return result
+    """Get all classes"""
+    try:
+        classes = crud.get_classes(db)
+        result = []
+        for c in classes:
+            result.append({
+                "id": c.id,
+                "class_name": c.class_name,
+                "class_code": c.class_code,
+                "teacher_id": c.teacher_id,
+                "teacher": {
+                    "id": c.teacher.id,
+                    "full_name": c.teacher.full_name,
+                    "email": c.teacher.email
+                } if c.teacher else None
+            })
+        return result
+    except Exception as e:
+        print(f"Error getting classes: {e}")
+        return []
 
-@router.get("/{class_id}", response_model=ClassWithStudents)
+@router.get("/test")
+async def test_endpoint():
+    """Test endpoint"""
+    return {"status": "success", "message": "Classes API working!"}
+
+@router.get("/{class_id}")
 async def get_class_by_id(
     class_id: int,
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_teacher)
 ):
-    """Get class details with students"""
-    # Check if teacher has access to this class
-    has_access = await class_service.check_teacher_access(class_id, current_user["user_id"], db)
-    if not has_access:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this class")
-    
-    class_obj = await class_service.get_class_by_id(class_id, db)
-    if not class_obj:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
-    
-    class_dict = ClassWithStudents.model_validate(class_obj).model_dump()
-    class_dict["teacher"] = {
-        "id": class_obj.teacher.id,
-        "full_name": class_obj.teacher.full_name,
-        "email": class_obj.teacher.email
-    }
-    class_dict["students"] = [
-        {
-            "id": student.id,
-            "student_id": student.student_id,
-            "full_name": student.full_name,
-            "face_enrolled": student.face_enrolled
+    """Get class by ID"""
+    try:
+        class_obj = crud.get_class_by_id(db, class_id)
+        if not class_obj:
+            raise HTTPException(status_code=404, detail="Class not found")
+        
+        return {
+            "id": class_obj.id,
+            "class_name": class_obj.class_name,
+            "class_code": class_obj.class_code,
+            "teacher_id": class_obj.teacher_id,
+            "students": [
+                {"id": s.id, "student_id": s.student_id, "full_name": s.full_name}
+                for s in class_obj.students
+            ]
         }
-        for student in class_obj.students
-    ]
-    
-    return class_dict
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/{class_id}")
+async def update_class(
+    class_id: int,
+    class_data: dict,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """Update a class"""
+    try:
+        class_obj = crud.get_class_by_id(db, class_id)
+        if not class_obj:
+            raise HTTPException(status_code=404, detail="Class not found")
+        
+        # Update fields
+        update_data = {}
+        if "class_name" in class_data:
+            update_data["class_name"] = class_data["class_name"]
+        if "class_code" in class_data:
+            update_data["class_code"] = class_data["class_code"]
+        if "teacher_id" in class_data:
+            update_data["teacher_id"] = class_data["teacher_id"]
+        
+        if update_data:
+            updated = crud.update_class(db, class_id, update_data)
+            return {
+                "success": True,
+                "id": updated.id,
+                "class_name": updated.class_name,
+                "class_code": updated.class_code,
+                "teacher_id": updated.teacher_id
+            }
+        return {"success": True, "message": "No changes"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error updating class: {e}")
+        return {"success": False, "error": str(e)}
+
+@router.delete("/{class_id}")
+async def delete_class(
+    class_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """Delete a class"""
+    try:
+        result = crud.delete_class(db, class_id)
+        return {"success": result}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

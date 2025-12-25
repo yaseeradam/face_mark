@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../services/validation_service.dart';
 import '../providers/app_providers.dart';
 import '../widgets/common_widgets.dart';
+import '../utils/ui_helpers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -30,25 +31,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final passwordError = ValidationService.validatePassword(_passwordController.text);
     
     if (emailError != null || passwordError != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(emailError ?? passwordError!), backgroundColor: Colors.red),
-      );
+      UIHelpers.showError(context, emailError ?? passwordError!);
       return;
     }
 
+    if (!mounted) return;
     setState(() => _isLoading = true);
     
     final result = await ApiService.login(_emailController.text, _passwordController.text);
     
+    if (!mounted) return;
     setState(() => _isLoading = false);
     
     if (result['success']) {
       ref.read(authProvider.notifier).login(result['data']['access_token'], result['data']['user'] ?? {});
-      Navigator.pushReplacementNamed(context, '/dashboard');
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/dashboard');
+      }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result['error']), backgroundColor: Colors.red),
-      );
+      UIHelpers.showError(context, result['error'] ?? 'Login failed');
     }
   }
 

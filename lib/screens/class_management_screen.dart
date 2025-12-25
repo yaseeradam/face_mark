@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
+import '../utils/ui_helpers.dart';
 
 class ClassManagementScreen extends ConsumerStatefulWidget {
   const ClassManagementScreen({super.key});
@@ -21,8 +22,12 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
   }
 
   Future<void> _loadClasses() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
+    
     final result = await ApiService.getClasses();
+    if (!mounted) return;
+    
     if (result['success']) {
       setState(() {
         _classes = List<Map<String, dynamic>>.from(result['data'] ?? []);
@@ -30,33 +35,28 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
       });
     } else {
       setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['error'] ?? 'Failed to load classes'), backgroundColor: Colors.red),
-        );
-      }
+      UIHelpers.showError(context, result['error'] ?? 'Failed to load classes');
     }
   }
 
   List<Map<String, dynamic>> get _filteredClasses {
     if (_searchQuery.isEmpty) return _classes;
     return _classes.where((cls) {
-      final name = cls['name']?.toString().toLowerCase() ?? '';
-      final code = cls['code']?.toString().toLowerCase() ?? '';
+      final name = cls['class_name']?.toString().toLowerCase() ?? '';
+      final code = cls['class_code']?.toString().toLowerCase() ?? '';
       return name.contains(_searchQuery.toLowerCase()) || code.contains(_searchQuery.toLowerCase());
     }).toList();
   }
 
   Future<void> _createClass(String name, String code) async {
     final result = await ApiService.createClass({'class_name': name, 'class_code': code});
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['success'] ? 'Class created successfully!' : result['error'] ?? 'Failed to create class'),
-          backgroundColor: result['success'] ? Colors.green : Colors.red,
-        ),
-      );
-      if (result['success']) _loadClasses();
+    if (!mounted) return;
+    
+    if (result['success']) {
+      UIHelpers.showSuccess(context, 'Class created successfully!');
+      await _loadClasses();
+    } else {
+      UIHelpers.showError(context, result['error'] ?? 'Failed to create class');
     }
   }
 
@@ -79,14 +79,13 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
 
     if (confirmed == true) {
       final result = await ApiService.deleteClass(classId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['success'] ? 'Class deleted' : result['error'] ?? 'Failed to delete'),
-            backgroundColor: result['success'] ? Colors.green : Colors.red,
-          ),
-        );
-        if (result['success']) _loadClasses();
+      if (!mounted) return;
+      
+      if (result['success']) {
+        UIHelpers.showSuccess(context, 'Class deleted');
+        await _loadClasses();
+      } else {
+        UIHelpers.showError(context, result['error'] ?? 'Failed to delete');
       }
     }
   }
@@ -218,8 +217,8 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(cls['name'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    Text(cls['code'] ?? '', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                    Text(cls['class_name'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text(cls['class_code'] ?? '', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
                   ],
                 ),
               ),
@@ -240,7 +239,7 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
           Row(
             children: [
               Expanded(child: _buildStatItem("Students", studentCount.toString(), Icons.people)),
-              Expanded(child: _buildStatItem("Code", cls['code'] ?? '-', Icons.tag)),
+              Expanded(child: _buildStatItem("Code", cls['class_code'] ?? '-', Icons.tag)),
             ],
           ),
         ],

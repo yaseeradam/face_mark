@@ -70,7 +70,10 @@ class FaceDetectionService {
       }
 
       // Register face with backend
-      return await ApiService.registerFace(studentId, optimizedImage);
+      return await ApiService.registerFace(
+        studentId: studentId,
+        imageFile: optimizedImage,
+      );
     } catch (e) {
       return {'success': false, 'error': 'Registration failed: $e'};
     }
@@ -94,7 +97,10 @@ class FaceDetectionService {
       }
 
       // Verify face with backend
-      return await ApiService.verifyFace(classId, optimizedImage);
+      return await ApiService.verifyFace(
+        classId: classId,
+        imageFile: optimizedImage,
+      );
     } catch (e) {
       return {'success': false, 'error': 'Verification failed: $e'};
     }

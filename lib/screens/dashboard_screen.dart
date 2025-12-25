@@ -39,18 +39,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     setState(() => _isLoading = true);
     
     try {
+      // Debug: Check if authenticated
+      print('🔐 Is Authenticated: ${ApiService.isAuthenticated}');
+      
       // Fetch students
       final studentsResult = await ApiService.getStudents();
+      print('📊 Students Result: ${studentsResult['success']} - ${studentsResult['error'] ?? "OK"}');
       if (studentsResult['success']) {
         final students = studentsResult['data'] as List? ?? [];
         _totalStudents = students.length;
+      } else {
+        print('❌ Students Error: ${studentsResult['error']}');
       }
       
       // Fetch classes
       final classesResult = await ApiService.getClasses();
+      print('📊 Classes Result: ${classesResult['success']} - ${classesResult['error'] ?? "OK"}');
       if (classesResult['success']) {
         final classes = classesResult['data'] as List? ?? [];
         _totalClasses = classes.length;
+      } else {
+        print('❌ Classes Error: ${classesResult['error']}');
       }
       
       // Fetch teachers
@@ -81,26 +90,65 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   void _onNavTap(int index) {
+    // Don't navigate if already on that screen
+    if (_currentIndex == index) return;
+    
     setState(() {
       _currentIndex = index;
     });
     
-    // Navigation logic
+    // Navigation logic with proper routing
     switch (index) {
         case 0:
             // Already on Home
             break;
         case 1:
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentListScreen()));
+            Navigator.pushReplacement(
+              context, 
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => const StudentListScreen(),
+                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+                transitionDuration: const Duration(milliseconds: 300),
+              ),
+            );
             break;
         case 2:
-             Navigator.push(context, MaterialPageRoute(builder: (_) => const MarkAttendanceScreen1()));
+            Navigator.pushReplacement(
+              context, 
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => const MarkAttendanceScreen1(),
+                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+                transitionDuration: const Duration(milliseconds: 300),
+              ),
+            );
             break;
         case 3:
-             Navigator.push(context, MaterialPageRoute(builder: (_) => const AttendanceHistoryScreen()));
+            Navigator.pushReplacement(
+              context, 
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => const AttendanceHistoryScreen(),
+                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+                transitionDuration: const Duration(milliseconds: 300),
+              ),
+            );
             break;
         case 4:
-             Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminProfileSetupScreen()));
+            Navigator.pushReplacement(
+              context, 
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => const AdminProfileSetupScreen(),
+                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+                transitionDuration: const Duration(milliseconds: 300),
+              ),
+            );
             break;
     }
   }
@@ -455,13 +503,116 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           });
         }
       },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 26),
-          const SizedBox(height: 4),
-          Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w500)),
-        ],
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected 
+              ? theme.colorScheme.primary.withOpacity(0.1) 
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Icon with scale animation
+            TweenAnimationBuilder<double>(
+              key: ValueKey<bool>(isSelected),
+              tween: Tween<double>(
+                begin: 1.0,
+                end: isSelected ? 1.2 : 1.0,
+              ),
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.elasticOut,
+              builder: (context, scale, child) {
+                return Transform.scale(
+                  scale: scale,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      // Icon
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        padding: EdgeInsets.all(isSelected ? 8 : 0),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isSelected 
+                              ? theme.colorScheme.primary.withOpacity(0.15)
+                              : Colors.transparent,
+                        ),
+                        child: Icon(
+                          icon, 
+                          color: color, 
+                          size: 26,
+                        ),
+                      ),
+                      
+                      // Notification Badge (optional - can be used for updates)
+                      if (isSelected)
+                        Positioned(
+                          top: -2,
+                          right: -2,
+                          child: TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0.0, end: 1.0),
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.elasticOut,
+                            builder: (context, value, child) {
+                              return Transform.scale(
+                                scale: value,
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: theme.colorScheme.primary.withOpacity(0.5),
+                                        blurRadius: 8,
+                                        spreadRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            
+            const SizedBox(height: 4),
+            
+            // Label with fade and slide animation
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 300),
+              style: TextStyle(
+                color: color,
+                fontSize: isSelected ? 11 : 10,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+              ),
+              child: Text(label),
+            ),
+            
+            // Selection Indicator
+            const SizedBox(height: 2),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              height: 3,
+              width: isSelected ? 20 : 0,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

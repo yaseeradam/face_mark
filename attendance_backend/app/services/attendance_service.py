@@ -53,3 +53,7 @@ class AttendanceService:
             "attendance_rate": round(attendance_rate, 2),
             "date": date_filter
         }
+    
+    async def get_attendance_by_date(self, db: Session, filter_date: date, class_id: Optional[int] = None) -> List[models.Attendance]:
+        """Get attendance records for a specific date"""
+        return crud.get_attendance_by_date(db, filter_date, class_id=class_id)

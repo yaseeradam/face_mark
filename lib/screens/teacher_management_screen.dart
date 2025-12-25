@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
+import '../utils/ui_helpers.dart';
 
 class TeacherManagementScreen extends ConsumerStatefulWidget {
   const TeacherManagementScreen({super.key});
@@ -21,8 +22,12 @@ class _TeacherManagementScreenState extends ConsumerState<TeacherManagementScree
   }
 
   Future<void> _loadTeachers() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
+    
     final result = await ApiService.getTeachers();
+    if (!mounted) return; // Check again after async operation
+    
     if (result['success']) {
       setState(() {
         _teachers = List<Map<String, dynamic>>.from(result['data'] ?? []);
@@ -30,11 +35,7 @@ class _TeacherManagementScreenState extends ConsumerState<TeacherManagementScree
       });
     } else {
       setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['error'] ?? 'Failed to load teachers'), backgroundColor: Colors.red),
-        );
-      }
+      UIHelpers.showError(context, result['error'] ?? 'Failed to load teachers');
     }
   }
 
@@ -66,14 +67,13 @@ class _TeacherManagementScreenState extends ConsumerState<TeacherManagementScree
 
     if (confirmed == true) {
       final result = await ApiService.deleteUser(teacherId.toString());
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['success'] ? 'Teacher deleted' : result['error'] ?? 'Failed to delete'),
-            backgroundColor: result['success'] ? Colors.green : Colors.red,
-          ),
-        );
-        if (result['success']) _loadTeachers();
+      if (!mounted) return;
+      
+      if (result['success']) {
+        UIHelpers.showSuccess(context, 'Teacher deleted');
+        await _loadTeachers();
+      } else {
+        UIHelpers.showError(context, result['error'] ?? 'Failed to delete');
       }
     }
   }
@@ -81,14 +81,13 @@ class _TeacherManagementScreenState extends ConsumerState<TeacherManagementScree
   Future<void> _toggleStatus(int teacherId, String currentStatus) async {
     final newStatus = currentStatus == 'active' ? 'inactive' : 'active';
     final result = await ApiService.updateUserStatus(teacherId.toString(), newStatus);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['success'] ? 'Status updated' : result['error'] ?? 'Failed to update'),
-          backgroundColor: result['success'] ? Colors.green : Colors.red,
-        ),
-      );
-      if (result['success']) _loadTeachers();
+    if (!mounted) return;
+    
+    if (result['success']) {
+      UIHelpers.showSuccess(context, 'Status updated');
+      await _loadTeachers();
+    } else {
+      UIHelpers.showError(context, result['error'] ?? 'Failed to update');
     }
   }
 
@@ -368,7 +367,10 @@ class _TeacherManagementScreenState extends ConsumerState<TeacherManagementScree
             FilledButton(
               onPressed: () async {
                 if (nameController.text.isNotEmpty && emailController.text.isNotEmpty && passwordController.text.isNotEmpty) {
+                  // Pop dialog first
                   Navigator.pop(context);
+                  
+                  // Create user with proper error handling
                   final result = await ApiService.createUser({
                     'teacher_id': idController.text,
                     'full_name': nameController.text,
@@ -377,14 +379,15 @@ class _TeacherManagementScreenState extends ConsumerState<TeacherManagementScree
                     'role': role,
                     'status': 'active',
                   });
+                  
+                  // Only show snackbar if widget is still mounted
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(result['success'] ? 'Teacher added!' : result['error'] ?? 'Failed to add teacher'),
-                        backgroundColor: result['success'] ? Colors.green : Colors.red,
-                      ),
-                    );
-                    if (result['success']) _loadTeachers();
+                    if (result['success']) {
+                      UIHelpers.showSuccess(context, 'Teacher added!');
+                      await _loadTeachers();
+                    } else {
+                      UIHelpers.showError(context, result['error'] ?? 'Failed to add teacher');
+                    }
                   }
                 }
               },

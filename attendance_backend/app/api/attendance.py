@@ -110,3 +110,87 @@ async def get_attendance_summary(
     
     summary = await attendance_service.get_attendance_summary(class_id, db, date_filter=date_filter)
     return AttendanceSummary(**summary)
+
+@router.get("/history")
+async def get_attendance_history(
+    date: Optional[str] = Query(None, description="Filter by date YYYY-MM-DD"),
+    class_id: Optional[int] = Query(None, description="Filter by class ID"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_teacher)
+):
+    """Get attendance history with optional date filter"""
+    from datetime import datetime as dt
+    try:
+        # Parse date if provided
+        filter_date = None
+        if date:
+            try:
+                filter_date = dt.strptime(date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        # Get attendance records
+        if filter_date:
+            records = await attendance_service.get_attendance_by_date(db, filter_date, class_id=class_id)
+        else:
+            records = await attendance_service.get_attendance_today(db, class_id=class_id)
+        
+        result = []
+        for record in records:
+            result.append({
+                "id": record.id,
+                "student_id": record.student_id,
+                "student_name": record.student.full_name if record.student else "Unknown",
+                "student_student_id": record.student.student_id if record.student else "Unknown",
+                "class_id": record.class_id,
+                "class_name": record.class_obj.class_name if record.class_obj else "Unknown",
+                "timestamp": record.timestamp.isoformat() if record.timestamp else None,
+                "confidence_score": record.confidence_score,
+                "status": "present"
+            })
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting attendance history: {e}")
+        return []
+
+@router.get("/export/csv")
+async def export_attendance_csv(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_teacher)
+):
+    """Export today's attendance to CSV"""
+    from fastapi.responses import StreamingResponse
+    import io
+    import csv
+    from datetime import datetime
+    
+    # Get attendance records (Today)
+    records = await attendance_service.get_attendance_today(db)
+    
+    # Create CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    writer.writerow(['ID', 'Student Name', 'Student ID', 'Class ID', 'Time', 'Confidence'])
+    
+    for record in records:
+        writer.writerow([
+            record.id,
+            getattr(record.student, 'full_name', 'Unknown'),
+            getattr(record.student, 'student_id', 'Unknown'),
+            record.class_id,
+            record.timestamp.strftime('%H:%M:%S'),
+            f"{record.confidence_score:.2f}%"
+        ])
+    
+    output.seek(0)
+    filename = f"attendance_export_{datetime.now().strftime('%Y%m%d')}.csv"
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

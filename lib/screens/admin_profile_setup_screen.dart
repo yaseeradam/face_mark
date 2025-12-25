@@ -1,13 +1,109 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/api_service.dart';
+import '../providers/app_providers.dart';
 
-class AdminProfileSetupScreen extends ConsumerWidget {
+class AdminProfileSetupScreen extends ConsumerStatefulWidget {
   const AdminProfileSetupScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AdminProfileSetupScreen> createState() => _AdminProfileSetupScreenState();
+}
+
+class _AdminProfileSetupScreenState extends ConsumerState<AdminProfileSetupScreen> {
+  Map<String, dynamic> _profile = {};
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final result = await ApiService.getProfile();
+    if (result['success']) {
+      if (mounted) {
+        setState(() {
+          _profile = result['data'] ?? {};
+          _isLoading = false;
+        });
+      }
+    } else {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _changePassword() async {
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Change Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: currentController,
+              decoration: const InputDecoration(labelText: 'Current Password'),
+              obscureText: true,
+            ),
+            TextField(
+              controller: newController,
+              decoration: const InputDecoration(labelText: 'New Password'),
+              obscureText: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog
+              
+              final result = await ApiService.changePassword(
+                currentController.text, 
+                newController.text
+              );
+              
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(result['success'] ? 'Password changed successfully' : result['error'] ?? 'Failed'),
+                    backgroundColor: result['success'] ? Colors.green : Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _logout() async {
+    await ApiService.logout();
+    ref.read(authProvider.notifier).logout();
+    if (mounted) {
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+
+    final String name = _profile['full_name'] ?? 'Admin User';
+    final String email = _profile['email'] ?? 'admin@school.com';
+    final String role = (_profile['role'] ?? 'Administrator').toString().toUpperCase();
+
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -35,11 +131,17 @@ class AdminProfileSetupScreen extends ConsumerWidget {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(color: theme.scaffoldBackgroundColor, width: 4),
-                        image: const DecorationImage(
-                          image: NetworkImage("https://lh3.googleusercontent.com/aida-public/AB6AXuC01FIzYyy6AyiNCbgdSXcchN49lDFFP2JILDkymHBnG0txkRWTSPfGo8wa_NoDj7BeESLnz5R83u862VpfUpvGcwcHAqB0xRhFhzrANOy-DEs0VNyr868Vm_jrABFYINODblNs0CDrc2SPm8CA0dptPIS3OASFy-9KQ_d0SrPdaodkTULZRsyv7TPUqgUOwQUT2sDmqmxHayqRUM9vJaHDV5Hw7iBLxhsQdnawc8SXza7ro75EKZ2aRQcQYDf2IcQjXHubIMF8_OM"),
-                          fit: BoxFit.cover,
+                        color: theme.colorScheme.primaryContainer,
+                      ),
+                      child: Center(
+                        child: Text(
+                          name.isNotEmpty ? name[0].toUpperCase() : 'A',
+                          style: TextStyle(
+                            fontSize: 40, 
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onPrimaryContainer
+                          ),
                         ),
-                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10)],
                       ),
                     ),
                     Positioned(
@@ -54,9 +156,9 @@ class AdminProfileSetupScreen extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
-                Text("Alex Morgan", style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-                Text("Super Administrator", style: theme.textTheme.bodyMedium),
-                Text("alex.morgan@company.com", style: theme.textTheme.bodySmall),
+                Text(name, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                Text(role, style: theme.textTheme.bodyMedium),
+                Text(email, style: theme.textTheme.bodySmall),
               ],
             ),
           ),
@@ -96,7 +198,11 @@ class AdminProfileSetupScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 16),
                             FilledButton.icon(
-                              onPressed: () {},
+                              onPressed: () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Please use Settings > Face ID Setup')),
+                                );
+                              },
                               icon: const Icon(Icons.add_circle_outline, size: 16),
                               label: const Text("Set up Face ID"),
                               style: FilledButton.styleFrom(
@@ -107,23 +213,11 @@ class AdminProfileSetupScreen extends ConsumerWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Container(
-                        width: 80,
-                        height: 100,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          image: const DecorationImage(
-                            image: NetworkImage("https://lh3.googleusercontent.com/aida-public/AB6AXuB9AyY2DrNMuVxJlb4S-S0EGiIGkyMDDgc8rrtzpdxcgbYeXirrkZuHwvItKka76kKvSJ2gvRRP7bz80wAFEWxDNzeW3JNC0m0QCqXIQF9x16PeLq9dNq5hPJp0SUJEkyBStHb-lumDw7tkaEp7D2uiAVCFExT9TZ16JDmAag-b4tZ1dT2M4yBnQM_EniFx5_irdIfmps0AeqbsnMCg1-mckK6mncymsWzTdqTClQYp0ihz5RLhXgGdAC9uXyha4zHICSOHmXjWJfs"),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
                 
-                _buildListItem(context, "Change Password", "Last changed 30 days ago", Icons.lock),
+                _buildListItem(context, "Change Password", "Update your security credentials", Icons.lock, onTap: _changePassword),
                 _buildListItem(context, "Two-Factor Auth", "Enabled via Authenticator App", Icons.shield),
                 
                 const SizedBox(height: 24),
@@ -168,13 +262,13 @@ class AdminProfileSetupScreen extends ConsumerWidget {
                 
                 const SizedBox(height: 32),
                 OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: _logout,
                   icon: const Icon(Icons.logout, color: Colors.red),
                   label: const Text("Log Out", style: TextStyle(color: Colors.red)),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    side: BorderSide(color: Colors.red.withValues(alpha: 0.3)),
-                    backgroundColor: Colors.red.withValues(alpha: 0.05),
+                    side: BorderSide(color: Colors.red.withOpacity(0.3)),
+                    backgroundColor: Colors.red.withOpacity(0.05),
                     minimumSize: const Size(double.infinity, 50),
                   ),
                 ),
@@ -199,7 +293,7 @@ class AdminProfileSetupScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildListItem(BuildContext context, String title, String? subtitle, IconData icon) {
+  Widget _buildListItem(BuildContext context, String title, String? subtitle, IconData icon, {VoidCallback? onTap}) {
      final theme = Theme.of(context);
      final isDark = theme.brightness == Brightness.dark;
      
@@ -219,7 +313,7 @@ class AdminProfileSetupScreen extends ConsumerWidget {
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: subtitle != null ? Text(subtitle, style: const TextStyle(fontSize: 12)) : null,
         trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-        onTap: () {},
+        onTap: onTap ?? () {},
       ),
     );
   }

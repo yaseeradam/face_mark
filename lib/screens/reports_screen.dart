@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart'; // For date formatting
+import '../services/api_service.dart';
 
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
@@ -9,8 +11,62 @@ class ReportsScreen extends ConsumerStatefulWidget {
 }
 
 class _ReportsScreenState extends ConsumerState<ReportsScreen> {
-  String _dateFilter = "month";
-  String _deptFilter = "cs";
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _logs = [];
+  Map<String, dynamic> _stats = {
+    'present': 0,
+    'absent': 0, // Need backend support or full calculation
+    'late': 0,
+    'rate': 0.0,
+  };
+  
+  // Filters
+  int? _selectedClassId;
+  List<Map<String, dynamic>> _classes = [];
+  String _dateFilter = "today"; // today, week, month
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    
+    // 1. Fetch Classes (for filter)
+    final classResult = await ApiService.getClasses();
+    if (classResult['success']) {
+      _classes = List<Map<String, dynamic>>.from(classResult['data'] ?? []);
+    }
+
+    // 2. Fetch Attendance Logs (Today or Filtered)
+    // For now, we fetch 'Today' as default
+    final result = await ApiService.getTodayAttendance(classId: _selectedClassId);
+    
+    if (result['success']) {
+      final data = List<Map<String, dynamic>>.from(result['data'] ?? []);
+      _logs = data;
+      
+      // Calculate basic stats
+      // Note: "Absent" requires knowing total students vs present.
+      // We'll estimate or just show present count for now.
+      int present = _logs.length;
+      int late = 0; // Need 'timestamp' vs 'class_start_time' logic, assume 0 for now or check data
+      
+      // Mocking rate calculation if total students unavailable in this call
+      // Ideally getDashboardStats for total
+      
+      setState(() {
+        _stats['present'] = present;
+        _stats['late'] = late;
+        // _stats['absent'] = ...; 
+        _isLoading = false;
+      });
+    } else {
+      setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,171 +79,102 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           onPressed: () => Navigator.pop(context),
           icon: const Icon(Icons.arrow_back_ios_new),
           style: IconButton.styleFrom(
-            backgroundColor: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+            backgroundColor: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
           ),
         ),
         title: const Text("Attendance Reports"),
         centerTitle: true,
         actions: [
           IconButton(
-            onPressed: () {},
-            icon: Icon(Icons.ios_share, color: theme.colorScheme.primary),
-            style: IconButton.styleFrom(
-              backgroundColor: theme.cardColor,
-            ),
+            onPressed: () async {
+              await ApiService.exportAttendanceCSV(DateTime.now());
+              if(context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Export initiated")));
+            },
+            icon: Icon(Icons.download, color: theme.colorScheme.primary),
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: Stack(
-        children: [
-          ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-            children: [
-              // Stats Grid
-              GridView.count(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 1.4,
-                children: [
-                  _buildStatCard(context, "Present Today", "850", "+2.1%", Icons.check_circle, true),
-                  _buildStatCard(context, "Absent", "42", null, Icons.cancel, false, iconColor: Colors.red),
-                  _buildStatCard(context, "Late Arrival", "15", null, Icons.schedule, false, iconColor: Colors.orange),
-                  _buildStatCard(context, "Avg. Rate", "94%", "+0.5%", Icons.trending_up, false, iconColor: theme.colorScheme.primary),
-                ],
-              ),
-              const SizedBox(height: 24),
-              
-              // Filters
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text("Filters", style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                  TextButton(onPressed: () {}, child: const Text("Reset")),
-                ],
-              ),
-              const SizedBox(height: 8),
-              
-              // Date Filter
-              DropdownButtonFormField<String>(
-                initialValue: _dateFilter,
+      body: RefreshIndicator(
+        onRefresh: _loadData,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+          children: [
+            // Stats Grid
+            GridView.count(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              childAspectRatio: 1.4,
+              children: [
+                _buildStatCard(context, "Present Today", "${_stats['present']}", null, Icons.check_circle, true),
+                _buildStatCard(context, "Verified", "${_stats['present']}", null, Icons.verified_user, false, iconColor: Colors.green),
+                // _buildStatCard(context, "Late Arrival", "${_stats['late']}", null, Icons.schedule, false, iconColor: Colors.orange),
+                // _buildStatCard(context, "Avg. Rate", "${_stats['rate']}%", null, Icons.trending_up, false, iconColor: theme.colorScheme.primary),
+              ],
+            ),
+            const SizedBox(height: 24),
+            
+            // Filters
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Filters", style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                TextButton(onPressed: _loadData, child: const Text("Reset")),
+              ],
+            ),
+            const SizedBox(height: 8),
+            
+            // Class Filter
+             DropdownButtonFormField<int>(
+                value: _selectedClassId,
                 decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.calendar_month),
+                  prefixIcon: const Icon(Icons.class_),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
                   filled: true,
                   fillColor: theme.cardColor,
+                  hintText: "All Classes"
                 ),
-                items: const [
-                  DropdownMenuItem(value: "today", child: Text("Today: Oct 24, 2023")),
-                  DropdownMenuItem(value: "week", child: Text("This Week")),
-                  DropdownMenuItem(value: "month", child: Text("This Month: October")),
-                  DropdownMenuItem(value: "custom", child: Text("Custom Range")),
+                items: [
+                   const DropdownMenuItem<int>(value: null, child: Text("All Classes")),
+                   ..._classes.map((c) => DropdownMenuItem<int>(value: c['id'], child: Text(c['class_name'] ?? c['name'] ?? 'Class'))),
                 ],
-                onChanged: (v) => setState(() => _dateFilter = v!),
+                onChanged: (v) {
+                   setState(() => _selectedClassId = v);
+                   _loadData();
+                },
               ),
-              const SizedBox(height: 12),
-              
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _deptFilter,
-                      decoration: InputDecoration(
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                         filled: true,
-                        fillColor: theme.cardColor,
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: "all", child: Text("All Depts", style: TextStyle(fontSize: 13))),
-                        DropdownMenuItem(value: "cs", child: Text("Comp. Sci", style: TextStyle(fontSize: 13))),
-                        DropdownMenuItem(value: "math", child: Text("Mathematics", style: TextStyle(fontSize: 13))),
-                        DropdownMenuItem(value: "eng", child: Text("Engineering", style: TextStyle(fontSize: 13))),
-                      ],
-                      onChanged: (v) => setState(() => _deptFilter = v!),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      decoration: InputDecoration(
-                        hintText: "Search",
-                        prefixIcon: const Icon(Icons.search, size: 20),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                        filled: true,
-                        fillColor: theme.cardColor,
-                      ),
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 24),
-              Text("Detailed Reports", style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
-              
-              // List Items
-              _buildReportItem(context, "Alex Johnson", "ID: #CS2023 • 08:02 AM", "Present", Colors.green),
-              _buildReportItem(context, "Sarah Williams", "ID: #CS2045 • --:--", "Absent", Colors.red),
-              _buildReportItem(context, "Michael Brown", "ID: #CS2088 • 09:15 AM", "Late", Colors.orange),
-              _buildReportItem(context, "Emily Davis", "ID: #CS2012 • 08:00 AM", "Present", Colors.green),
-              _buildReportItem(context, "David Wilson", "ID: #CS2099 • 08:05 AM", "Present", Colors.green),
-              
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () {},
-                style: TextButton.styleFrom(
-                  backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text("View All Records", style: TextStyle(color: theme.colorScheme.primary)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          
-          // Bottom Export Button
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(16, 32, 16, 16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [
-                    theme.scaffoldBackgroundColor,
-                    theme.scaffoldBackgroundColor.withValues(alpha: 0.8),
-                    theme.scaffoldBackgroundColor.withValues(alpha: 0),
-                  ],
-                ),
-              ),
-              child: FilledButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.download),
-                label: const Text("Export Report"),
-                style: FilledButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-              ),
-            ),
-          ),
-        ],
+            
+            const SizedBox(height: 24),
+            Text("Detailed Logs", style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            
+            if (_isLoading)
+               const Center(child: CircularProgressIndicator())
+            else if (_logs.isEmpty)
+               const Center(child: Padding(padding: EdgeInsets.all(32), child: Text("No attendance records found for today.")))
+            else
+               // List Items
+               ListView.builder(
+                 shrinkWrap: true,
+                 physics: const NeverScrollableScrollPhysics(),
+                 itemCount: _logs.length,
+                 itemBuilder: (context, index) {
+                    final log = _logs[index];
+                    final String name = log['student_name'] ?? 'Unknown';
+                    final String idStr = log['student_student_id'] ?? '-';
+                    final String time = log['timestamp'] != null 
+                        ? DateFormat('hh:mm a').format(DateTime.parse(log['timestamp'])) 
+                        : '--:--';
+                    
+                    return _buildReportItem(context, name, "ID: #$idStr • $time", "Present", Colors.green);
+                 },
+               ),
+          ],
+        ),
       ),
     );
   }
@@ -202,8 +189,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: isPrimary ? [BoxShadow(color: theme.colorScheme.primary.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))] : [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)],
-        border: !isPrimary ? Border.all(color: Colors.grey.withValues(alpha: 0.1)) : null,
+        boxShadow: isPrimary ? [BoxShadow(color: theme.colorScheme.primary.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))] : [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)],
+        border: !isPrimary ? Border.all(color: Colors.grey.withOpacity(0.1)) : null,
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -216,24 +203,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               Icon(icon, color: iconColor ?? Colors.white70, size: 20),
             ],
           ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(value, style: TextStyle(color: textColor, fontSize: 24, fontWeight: FontWeight.bold)),
-              if (trend != null) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(trend, style: TextStyle(color: isPrimary ? Colors.white : Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
-                ),
-              ]
-            ],
-          ),
+          Text(value, style: TextStyle(color: textColor, fontSize: 24, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -254,16 +224,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       child: Row(
         children: [
           Container(
-            width: 48,
-            height: 48,
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.grey[300],
+              color: statusColor.withOpacity(0.1),
               shape: BoxShape.circle,
-              image: const DecorationImage(
-                image: NetworkImage("https://lh3.googleusercontent.com/aida-public/AB6AXuD5iivQivTvtM1lD_FZwBnxFl57wFrDQ_7d33zaiTFNjrr1ahOp_JOVCKkqiF2VzG0UFw7TWZQNzxLQpk9VwTIyZ_DAw1EzJd7BaWb0P-oJKVtjBhltq_kbexBeKeJfHpzLy9HSpAEqRyIjcJUQSrPFdCTXKk33jG2P5NMmMrRiIga2UWJ6HTZXei_CixaLT4dYryZsLlHXFt0NtilaaMrFP_0fUCW1lDmw51FhuwXGasFPPzKxzccnpVDvMNk9s2JXU483WIB0Jso"),
-                fit: BoxFit.cover,
-              ),
             ),
+            child: Icon(Icons.person, color: statusColor),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -278,7 +244,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.1),
+              color: statusColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(status, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),

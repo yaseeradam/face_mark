@@ -1,336 +1,257 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:camera/camera.dart';
 import 'dart:io';
 import '../services/api_service.dart';
+import '../utils/ui_helpers.dart';
 
-class RegisterStudentScreen extends ConsumerStatefulWidget {
+class RegisterStudentScreen extends StatefulWidget {
   const RegisterStudentScreen({super.key});
 
   @override
-  ConsumerState<RegisterStudentScreen> createState() => _RegisterStudentScreenState();
+  State<RegisterStudentScreen> createState() => _RegisterStudentScreenState();
 }
 
-class _RegisterStudentScreenState extends ConsumerState<RegisterStudentScreen> {
-  final _idController = TextEditingController();
+class _RegisterStudentScreenState extends State<RegisterStudentScreen> with SingleTickerProviderStateMixin {
+  final _formKey = GlobalKey<FormState>();
+  final _studentIdController = TextEditingController();
   final _nameController = TextEditingController();
+  
+  CameraController? _cameraController;
+  bool _isCameraInitialized = false;
+  late AnimationController _animationController;
+  
   int? _selectedClassId;
   List<Map<String, dynamic>> _classes = [];
-  File? _imageFile;
-  bool _isLoading = false;
-  bool _isSaving = false;
+  bool _isRegistering = false;
+  XFile? _capturedImage;
 
   @override
   void initState() {
     super.initState();
     _loadClasses();
+    _initializeCamera();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+  }
+
+  Future<void> _loadClasses() async {
+    final result = await ApiService.getClasses();
+    if (!mounted) return;
+    
+    if (result['success']) {
+      setState(() {
+        _classes = List<Map<String, dynamic>>.from(result['data'] ?? []);
+      });
+    }
+  }
+
+  Future<void> _initializeCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) return;
+      
+      // Force Front Camera
+      final frontCamera = cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
+
+      _cameraController = CameraController(
+        frontCamera,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
+
+      await _cameraController!.initialize();
+      if (mounted) setState(() => _isCameraInitialized = true);
+    } catch (e) {
+      debugPrint('Camera Error: $e');
+    }
   }
 
   @override
   void dispose() {
-    _idController.dispose();
+    _cameraController?.dispose();
+    _animationController.dispose();
+    _studentIdController.dispose();
     _nameController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadClasses() async {
-    setState(() => _isLoading = true);
-    final result = await ApiService.getClasses();
-    if (result['success']) {
-      setState(() {
-        _classes = List<Map<String, dynamic>>.from(result['data'] ?? []);
-        _isLoading = false;
-      });
-    } else {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _capturePhoto() async {
-    final picker = ImagePicker();
-    final XFile? photo = await picker.pickImage(
-      source: ImageSource.camera,
-      preferredCameraDevice: CameraDevice.front,
-      imageQuality: 85,
-    );
-
-    if (photo != null) {
-      setState(() {
-        _imageFile = File(photo.path);
-      });
-    }
-  }
-
-  Future<void> _saveStudent() async {
-    if (_idController.text.isEmpty || _nameController.text.isEmpty || _selectedClassId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all fields'), backgroundColor: Colors.red),
-      );
+  Future<void> _handleRegistration() async {
+    if (!_formKey.currentState!.validate() || _selectedClassId == null) {
+      UIHelpers.showWarning(context, "Please fill all fields and select a class");
       return;
     }
 
-    if (_imageFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please capture a photo'), backgroundColor: Colors.red),
+    if (!mounted) return;
+    setState(() => _isRegistering = true);
+
+    try {
+      debugPrint("Starting registration for: ${_studentIdController.text}");
+      
+      // 1. Capture Face directly in the app
+      final XFile photo = await _cameraController!.takePicture();
+      debugPrint("Photo captured: ${photo.path}");
+      
+      // 2. Register via API
+      final result = await ApiService.registerStudent(
+        studentId: _studentIdController.text,
+        name: _nameController.text,
+        classId: _selectedClassId!,
+        imageFile: File(photo.path),
       );
-      return;
-    }
+      
+      debugPrint("Registration result: $result");
 
-    setState(() => _isSaving = true);
-
-    final result = await ApiService.registerStudent(
-      studentId: _idController.text,
-      name: _nameController.text,
-      classId: _selectedClassId!,
-      imageFile: _imageFile!,
-    );
-
-    setState(() => _isSaving = false);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['success'] ? 'Student registered successfully!' : result['error'] ?? 'Failed to register student'),
-          backgroundColor: result['success'] ? Colors.green : Colors.red,
-        ),
-      );
-
+      if (!mounted) return;
+      
       if (result['success']) {
-        Navigator.pop(context);
+        UIHelpers.showSuccess(context, "Student Registered Successfully!");
+        if (mounted) Navigator.pop(context);
+      } else {
+        final errorMsg = result['error']?.toString() ?? 'Unknown error';
+        debugPrint("Registration failed: $errorMsg");
+        UIHelpers.showError(context, "Registration Failed: $errorMsg");
       }
+    } catch (e, stackTrace) {
+      debugPrint("Registration exception: $e");
+      debugPrint("Stack trace: $stackTrace");
+      if (mounted) {
+        UIHelpers.showError(context, "Error: $e");
+      }
+    } finally {
+      if (mounted) setState(() => _isRegistering = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
+    
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back_ios_new),
-          style: IconButton.styleFrom(
-            backgroundColor: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
-          ),
-        ),
-        title: const Text("New Registration"),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text("Register Student")),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 100),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  // Camera Preview Card
-                  GestureDetector(
-                    onTap: _capturePhoto,
-                    child: Container(
-                      width: double.infinity,
-                      height: 480,
+        padding: const EdgeInsets.all(24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Scanner Preview
+              Container(
+                height: 300,
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: theme.colorScheme.primary, width: 2),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (_isCameraInitialized)
+                      CameraPreview(_cameraController!)
+                    else
+                      const Center(child: CircularProgressIndicator()),
+                    
+                    // Scanning Animation Line
+                    AnimatedBuilder(
+                      animation: _animationController,
+                      builder: (context, child) {
+                        return CustomPaint(
+                          size: const Size(double.infinity, 300),
+                          painter: ScannerLinePainter(percent: _animationController.value, color: theme.colorScheme.primary),
+                        );
+                      },
+                    ),
+                    
+                    // Face Frame
+                    Container(
+                      width: 200,
+                      height: 200,
                       decoration: BoxDecoration(
-                        color: isDark ? Colors.grey[800] : Colors.grey[200],
-                        borderRadius: BorderRadius.circular(16),
-                        image: _imageFile != null 
-                            ? DecorationImage(image: FileImage(_imageFile!), fit: BoxFit.cover)
-                            : null,
-                      ),
-                      child: Stack(
-                        children: [
-                          if (_imageFile == null)
-                            // Empty state
-                            Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.camera_alt, size: 64, color: Colors.grey[400]),
-                                  const SizedBox(height: 16),
-                                  Text('Tap to capture photo', style: TextStyle(color: Colors.grey[600], fontSize: 16)),
-                                ],
-                              ),
-                            ),
-                          // Overlay Gradient
-                          Positioned.fill(
-                            child: Container(
-                              decoration: const BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [Colors.black26, Colors.transparent, Colors.black54],
-                                ),
-                                borderRadius: BorderRadius.all(Radius.circular(16)),
-                              ),
-                            ),
-                          ),
-                          // Frame
-                          Center(
-                            child: Container(
-                              width: 250,
-                              height: 250,
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.white54, width: 2),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Stack(
-                                children: [
-                                  Align(alignment: Alignment.topLeft, child: _buildCorner(theme.colorScheme.primary)),
-                                  Align(alignment: Alignment.topRight, child: Transform.rotate(angle: 1.57, child: _buildCorner(theme.colorScheme.primary))),
-                                  Align(alignment: Alignment.bottomLeft, child: Transform.rotate(angle: -1.57, child: _buildCorner(theme.colorScheme.primary))),
-                                  Align(alignment: Alignment.bottomRight, child: Transform.rotate(angle: 3.14, child: _buildCorner(theme.colorScheme.primary))),
-                                ],
-                              ),
-                            ),
-                          ),
-                          // Status Badge
-                          if (_imageFile != null)
-                            Positioned(
-                              bottom: 24,
-                              left: 0,
-                              right: 0,
-                              child: Column(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: Colors.green.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(color: Colors.green.withOpacity(0.3)),
-                                    ),
-                                    child: const Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
-                                        SizedBox(width: 8),
-                                        Text("Photo Captured", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
+                        border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
+                        borderRadius: BorderRadius.circular(20),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Retake Button
-                  OutlinedButton.icon(
-                    onPressed: _capturePhoto,
-                    icon: Icon(Icons.camera_alt, color: theme.colorScheme.primary),
-                    label: Text(_imageFile == null ? "Capture Photo" : "Retake Photo", style: TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.bold)),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                      side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[200]!),
-                    ),
-                  ),
-                  
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Divider(),
-                  ),
-                  
-                  // Form
-                  Align(alignment: Alignment.centerLeft, child: Text("Student Details", style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold))),
-                  const SizedBox(height: 16),
-                  
-                  _buildTextField(context, "Student ID", "e.g. 2024001", Icons.badge, _idController),
-                  const SizedBox(height: 16),
-                  _buildTextField(context, "Full Name", "Enter full name", Icons.person, _nameController),
-                  const SizedBox(height: 16),
-                  
-                  // Dropdown
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Class / Department", style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 6),
-                      _isLoading
-                          ? const Center(child: CircularProgressIndicator())
-                          : DropdownButtonFormField<int>(
-                              value: _selectedClassId,
-                              items: _classes.map((cls) => DropdownMenuItem<int>(
-                                value: cls['id'],
-                                child: Text(cls['name'] ?? 'Unknown'),
-                              )).toList(),
-                              onChanged: (val) => setState(() => _selectedClassId = val),
-                              decoration: InputDecoration(
-                                hintText: "Select Class",
-                                prefixIcon: const Icon(Icons.school_outlined),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                filled: true,
-                                fillColor: theme.cardColor,
-                              ),
-                            ),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-      ),
-      bottomSheet: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: theme.scaffoldBackgroundColor,
-          border: Border(top: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[200]!)),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, -2))],
-        ),
-        child: FilledButton.icon(
-          onPressed: _isSaving ? null : _saveStudent,
-          icon: _isSaving 
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Icon(Icons.check_circle_outline),
-          label: Text(_isSaving ? "Saving..." : "Save Student"),
-          style: FilledButton.styleFrom(
-            backgroundColor: theme.colorScheme.primary,
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              const SizedBox(height: 24),
+              
+              TextFormField(
+                controller: _studentIdController,
+                decoration: const InputDecoration(labelText: "Student ID", prefixIcon: Icon(Icons.badge)),
+                validator: (v) => v!.isEmpty ? "Required" : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: "Full Name", prefixIcon: Icon(Icons.person)),
+                validator: (v) => v!.isEmpty ? "Required" : null,
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<int>(
+                value: _selectedClassId,
+                decoration: const InputDecoration(labelText: "Class", prefixIcon: Icon(Icons.class_)),
+                items: _classes.map((c) => DropdownMenuItem<int>(
+                  value: c['id'],
+                  child: Text(c['class_name'] ?? c['name']),
+                )).toList(),
+                onChanged: (v) => setState(() => _selectedClassId = v),
+              ),
+              const SizedBox(height: 32),
+              
+              ElevatedButton.icon(
+                onPressed: _isRegistering ? null : _handleRegistration,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: _isRegistering 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
+                  : const Icon(Icons.how_to_reg),
+                label: Text(_isRegistering ? "Processing..." : "Scan & Register Student"),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildTextField(BuildContext context, String label, String hint, IconData icon, TextEditingController controller) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-        const SizedBox(height: 6),
-        TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            hintText: hint,
-            suffixIcon: Icon(icon, color: Colors.grey),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            filled: true,
-            fillColor: theme.cardColor,
-          ),
-        ),
-      ],
-    );
+class ScannerLinePainter extends CustomPainter {
+  final double percent;
+  final Color color;
+  ScannerLinePainter({required this.percent, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 3.0
+      ..style = PaintingStyle.stroke;
+
+    final y = size.height * percent;
+    
+    // Draw the moving line
+    canvas.drawLine(Offset(20, y), Offset(size.width - 20, y), paint);
+
+    // Draw a subtle glow/gradient for the line
+    final shadowPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [color.withOpacity(0), color.withOpacity(0.4), color.withOpacity(0)],
+      ).createShader(Rect.fromLTWH(0, y - 20, size.width, 40));
+    
+    canvas.drawRect(Rect.fromLTWH(20, y - 20, size.width - 40, 40), shadowPaint);
   }
 
-  Widget _buildCorner(Color color) {
-    return Container(
-      width: 24,
-      height: 24,
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: color, width: 4),
-          left: BorderSide(color: color, width: 4),
-        ),
-        borderRadius: const BorderRadius.only(topLeft: Radius.circular(8)),
-      ),
-    );
-  }
+  @override
+  bool shouldRepaint(covariant ScannerLinePainter oldDelegate) => oldDelegate.percent != percent;
 }

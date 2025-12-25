@@ -76,7 +76,7 @@ class ApiService {
         return {'success': true, 'data': data};
       } else {
         final error = response.body.isNotEmpty ? jsonDecode(response.body) : {};
-        return {'success': false, 'error': error['message'] ?? 'Request failed'};
+        return {'success': false, 'error': error['detail'] ?? error['message'] ?? error['error'] ?? 'Request failed'};
       }
     } catch (e) {
       return {'success': false, 'error': 'Connection error: ${e.toString()}'};
@@ -274,25 +274,52 @@ class ApiService {
     required int classId,
     required File imageFile,
   }) async {
+    // 1. Create Student Record
+    final studentData = {
+      'student_id': studentId,
+      'full_name': name,
+      'class_id': classId,
+    };
+    
+    final createResult = await _makeRequest('POST', '/students/', body: studentData);
+    if (!createResult['success']) {
+      return createResult;
+    }
+
+    final int dbId = createResult['data']['id'];
+
+    // 2. Register Face
     return await _makeRequest(
       'POST',
-      '/students/register',
+      '/face/register',
       file: imageFile,
-      fields: {
-        'student_id': studentId,
-        'name': name,
-        'class_id': classId.toString(),
-      },
+      fields: {'student_id': dbId.toString()},
+    );
+  }
+
+  static Future<Map<String, dynamic>> verifyFace({
+    required int classId,
+    required File imageFile,
+  }) async {
+    return await _makeRequest(
+      'POST',
+      '/face/verify',
+      file: imageFile,
+      fields: {'class_id': classId.toString()},
     );
   }
 
   // Face recognition endpoints
-  static Future<Map<String, dynamic>> registerFace(int studentId, File imageFile) async {
-    return await _makeRequest('POST', '/face/register', file: imageFile, fields: {'student_id': studentId.toString()});
-  }
-
-  static Future<Map<String, dynamic>> verifyFace(int classId, File imageFile) async {
-    return await _makeRequest('POST', '/face/verify', file: imageFile, fields: {'class_id': classId.toString()});
+  static Future<Map<String, dynamic>> registerFace({
+    required int studentId,
+    required File imageFile,
+  }) async {
+    return await _makeRequest(
+      'POST',
+      '/face/register',
+      file: imageFile,
+      fields: {'student_id': studentId.toString()},
+    );
   }
 
   static Future<Map<String, dynamic>> deleteFace(int studentId) async {

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'student_details_screen.dart';
 import 'register_student_screen.dart';
 import '../services/api_service.dart';
+import '../utils/ui_helpers.dart';
 
 class StudentListScreen extends ConsumerStatefulWidget {
   const StudentListScreen({super.key});
@@ -24,8 +25,12 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
   }
 
   Future<void> _loadStudents() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
+    
     final result = await ApiService.getStudents();
+    if (!mounted) return;
+    
     if (result['success']) {
       setState(() {
         _students = List<Map<String, dynamic>>.from(result['data'] ?? []);
@@ -33,11 +38,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
       });
     } else {
       setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['error'] ?? 'Failed to load students'), backgroundColor: Colors.red),
-        );
-      }
+      UIHelpers.showError(context, result['error'] ?? 'Failed to load students');
     }
   }
 

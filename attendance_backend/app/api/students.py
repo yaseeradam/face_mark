@@ -79,6 +79,7 @@ async def get_students(
                 "full_name": student.full_name,
                 "class_id": student.class_id,
                 "face_enrolled": student.face_enrolled,
+                "photo_path": student.photo_path,
                 "class_name": student.class_obj.class_name if student.class_obj else None
             })
         

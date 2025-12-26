@@ -10,6 +10,7 @@ import 'student_list_screen.dart';
 import 'class_management_screen.dart';
 import 'teacher_management_screen.dart';
 import '../services/api_service.dart';
+import '../providers/app_providers.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -19,7 +20,6 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
-  int _currentIndex = 0;
   bool _isLoading = true;
   
   // Real data from API
@@ -89,85 +89,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
-  void _onNavTap(int index) {
-    // Don't navigate if already on that screen
-    if (_currentIndex == index) return;
-    
-    setState(() {
-      _currentIndex = index;
-    });
-    
-    // Navigation logic with proper routing
-    switch (index) {
-        case 0:
-            // Already on Home
-            break;
-        case 1:
-            Navigator.pushReplacement(
-              context, 
-              PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) => const StudentListScreen(),
-                transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
-                transitionDuration: const Duration(milliseconds: 300),
-              ),
-            );
-            break;
-        case 2:
-            Navigator.pushReplacement(
-              context, 
-              PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) => const MarkAttendanceScreen1(),
-                transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
-                transitionDuration: const Duration(milliseconds: 300),
-              ),
-            );
-            break;
-        case 3:
-            Navigator.pushReplacement(
-              context, 
-              PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) => const AttendanceHistoryScreen(),
-                transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
-                transitionDuration: const Duration(milliseconds: 300),
-              ),
-            );
-            break;
-        case 4:
-            Navigator.pushReplacement(
-              context, 
-              PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) => const AdminProfileSetupScreen(),
-                transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
-                transitionDuration: const Duration(milliseconds: 300),
-              ),
-            );
-            break;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-              child: Row(
-                children: [
+    return SafeArea(
+      bottom: false,
+      child: Column(
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+            child: Row(
+              children: [
                   Stack(
                     children: [
                       Container(
@@ -308,7 +244,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         _buildActionCard(context, "Register New", Icons.person_add, Colors.blue, 
                           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterStudentScreenNew()))),
                         _buildActionCard(context, "Scan Face", Icons.center_focus_strong, Colors.green,
-                          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MarkAttendanceScreen1()))),
+                          () => ref.read(navigationProvider.notifier).state = 1),
                         _buildActionCard(context, "Classes", Icons.class_, Colors.purple,
                           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClassManagementScreen()))),
                         _buildActionCard(context, "Teachers", Icons.school, Colors.orange,
@@ -316,7 +252,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         _buildActionCard(context, "User Management", Icons.manage_accounts, Colors.indigo,
                           () => Navigator.pushNamed(context, '/admin-user-management')),
                         _buildActionCard(context, "Reports", Icons.bar_chart, Colors.teal,
-                          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen()))),
+                          () => ref.read(navigationProvider.notifier).state = 3),
                         _buildActionCard(context, "System", Icons.settings, Colors.grey,
                           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
                       ],
@@ -331,38 +267,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     _buildInfoItem(context, "Total Students", "$_totalStudents registered", Icons.people, Colors.blue),
                     _buildInfoItem(context, "Total Classes", "$_totalClasses active classes", Icons.class_, Colors.purple),
                     _buildInfoItem(context, "Total Teachers", "$_totalTeachers teachers", Icons.school, Colors.orange),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.only(top: 8, bottom: 20),
-        decoration: BoxDecoration(
-          color: theme.cardColor,
-          border: Border(top: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[200]!)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-                _buildNavItem(context, Icons.home, "Home", 0, onTap: () => _onNavTap(0)),
-                _buildNavItem(context, Icons.people, "Students", 1, onTap: () => _onNavTap(1)),
-                _buildNavItem(context, Icons.center_focus_strong, "Scan", 2, onTap: () => _onNavTap(2)),
-                _buildNavItem(context, Icons.history, "History", 3, onTap: () => _onNavTap(3)),
-                _buildNavItem(context, Icons.account_circle, "Profile", 4, onTap: () => _onNavTap(4)),
-            ],
-        ),
-      ),
-    );
+                  ], // Close ListView children
+                ), // Close ListView
+              ), // Close RefreshIndicator
+            ), // Close Expanded
+          ], // Close Column children
+        ), // Close Column and SafeArea child
+      ); // Close SafeArea and return statement
   }
 
   Widget _buildStatCard(BuildContext context, {required IconData icon, required String label, required String value, String? trend, required Color bg, required Color textColor, required Color iconBg, required Color iconColor, bool isOutlined = false}) {
@@ -488,132 +399,5 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _buildNavItem(BuildContext context, IconData icon, String label, int index, {VoidCallback? onTap}) {
-    final theme = Theme.of(context);
-    final isSelected = _currentIndex == index;
-    final color = isSelected ? theme.colorScheme.primary : (theme.brightness == Brightness.dark ? Colors.grey[500] : Colors.grey[400]);
 
-    return InkWell(
-      onTap: () {
-        if (onTap != null) {
-          onTap();
-        } else {
-          setState(() {
-            _currentIndex = index;
-          });
-        }
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected 
-              ? theme.colorScheme.primary.withOpacity(0.1) 
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Icon with scale animation
-            TweenAnimationBuilder<double>(
-              key: ValueKey<bool>(isSelected),
-              tween: Tween<double>(
-                begin: 1.0,
-                end: isSelected ? 1.2 : 1.0,
-              ),
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.elasticOut,
-              builder: (context, scale, child) {
-                return Transform.scale(
-                  scale: scale,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      // Icon
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        padding: EdgeInsets.all(isSelected ? 8 : 0),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isSelected 
-                              ? theme.colorScheme.primary.withOpacity(0.15)
-                              : Colors.transparent,
-                        ),
-                        child: Icon(
-                          icon, 
-                          color: color, 
-                          size: 26,
-                        ),
-                      ),
-                      
-                      // Notification Badge (optional - can be used for updates)
-                      if (isSelected)
-                        Positioned(
-                          top: -2,
-                          right: -2,
-                          child: TweenAnimationBuilder<double>(
-                            tween: Tween(begin: 0.0, end: 1.0),
-                            duration: const Duration(milliseconds: 400),
-                            curve: Curves.elasticOut,
-                            builder: (context, value, child) {
-                              return Transform.scale(
-                                scale: value,
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: theme.colorScheme.primary,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: theme.colorScheme.primary.withOpacity(0.5),
-                                        blurRadius: 8,
-                                        spreadRadius: 2,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            
-            const SizedBox(height: 4),
-            
-            // Label with fade and slide animation
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 300),
-              style: TextStyle(
-                color: color,
-                fontSize: isSelected ? 11 : 10,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-              ),
-              child: Text(label),
-            ),
-            
-            // Selection Indicator
-            const SizedBox(height: 2),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              height: 3,
-              width: isSelected ? 20 : 0,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

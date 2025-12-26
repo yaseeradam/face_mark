@@ -47,19 +47,25 @@ def find_best_match(target_embedding: np.ndarray, candidate_embeddings: List[Tup
         Tuple[best_student_id, best_similarity, is_match]
     """
     if not candidate_embeddings:
+        print("⚠️ No candidate embeddings provided")
         return None, 0.0, False
     
     if threshold is None:
         threshold = settings.face_similarity_threshold
+    
+    print(f"🔍 Matching against {len(candidate_embeddings)} candidates with threshold {threshold}")
     
     best_student_id = None
     best_similarity = 0.0
     
     for student_id, candidate_embedding in candidate_embeddings:
         similarity = cosine_similarity(target_embedding, candidate_embedding)
+        print(f"  Student {student_id}: similarity = {similarity:.4f}")
         if similarity > best_similarity:
             best_similarity = similarity
             best_student_id = student_id
     
     is_match = best_similarity >= threshold
+    print(f"{'✅' if is_match else '❌'} Best match: Student {best_student_id} with {best_similarity:.4f} (threshold: {threshold})")
+    
     return best_student_id, best_similarity, is_match

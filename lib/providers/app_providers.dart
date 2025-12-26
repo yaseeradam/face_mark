@@ -74,3 +74,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = AuthState();
   }
 }
+
+// Navigation state provider
+final navigationProvider = StateProvider<int>((ref) => 0);

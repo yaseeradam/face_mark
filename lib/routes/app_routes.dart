@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../screens/splash_screen.dart';
 import '../screens/login_screen.dart';
+import '../screens/main_navigation.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/student_list_screen.dart';
 import '../screens/register_student_screen_new.dart';
@@ -14,6 +15,7 @@ import '../screens/class_management_screen.dart';
 import '../screens/teacher_management_screen.dart';
 import '../screens/attendance_report_screen.dart';
 import '../screens/admin/admin_user_management_screen.dart';
+import '../screens/scan_attendance_screen.dart';
 
 class AppRoutes {
   static const String splash = '/';
@@ -31,11 +33,12 @@ class AppRoutes {
   static const String teacherManagement = '/teacher-management';
   static const String attendanceReport = '/attendance-report';
   static const String adminUserManagement = '/admin-user-management';
+  static const String scanAttendance = '/scan-attendance';
 
   static Map<String, WidgetBuilder> get routes => {
     splash: (context) => const SplashScreen(),
     login: (context) => const LoginScreen(),
-    dashboard: (context) => const DashboardScreen(),
+    dashboard: (context) => const MainNavigation(),
     studentList: (context) => const StudentListScreen(),
     registerStudent: (context) => const RegisterStudentScreenNew(),
     markAttendance: (context) => const MarkAttendanceScreen1(),
@@ -48,5 +51,6 @@ class AppRoutes {
     teacherManagement: (context) => const TeacherManagementScreen(),
     attendanceReport: (context) => const AttendanceReportScreen(),
     adminUserManagement: (context) => const AdminUserManagementScreen(),
+    scanAttendance: (context) => const ScanAttendanceScreen(),
   };
 }

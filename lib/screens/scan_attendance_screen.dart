@@ -38,8 +38,8 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
   // Auto-capture state
   DateTime? _lastCaptureTime;
   int _readyFrameCount = 0;
-  static const _requiredReadyFrames = 5;
-  static const _autoCaptureCooldown = Duration(seconds: 5);
+  static const _requiredReadyFrames = 3; // Reduced for faster capture
+  static const _autoCaptureCooldown = Duration(seconds: 3); // Reduced cooldown
   
   int? _selectedClassId;
   List<Map<String, dynamic>> _classes = [];
@@ -253,12 +253,19 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
       final leftEyeOpen = face.leftEyeOpenProbability;
       final rightEyeOpen = face.rightEyeOpenProbability;
       
+      // Make head angle check more lenient
       bool isHeadStraight = headAngleY != null && headAngleZ != null &&
-                           headAngleY.abs() <= 15 && headAngleZ.abs() <=10;
-      bool eyesOpen = leftEyeOpen != null && rightEyeOpen != null &&
-                     leftEyeOpen > 0.5 && rightEyeOpen > 0.5;
+                           headAngleY.abs() <= 20 && headAngleZ.abs() <= 15;
       
-      _isFaceValid = isHeadStraight && eyesOpen;
+      // Make eye check optional - some cameras/conditions don't return this
+      bool eyesOpen = true; // Default to true
+      if (leftEyeOpen != null && rightEyeOpen != null) {
+        eyesOpen = leftEyeOpen > 0.3 && rightEyeOpen > 0.3; // Lower threshold
+      }
+      
+      debugPrint('👁️ Face: headY=${headAngleY?.toStringAsFixed(1)}, headZ=${headAngleZ?.toStringAsFixed(1)}, leftEye=$leftEyeOpen, rightEye=$rightEyeOpen, straight=$isHeadStraight, eyes=$eyesOpen');
+      
+      _isFaceValid = isHeadStraight;
       _isLivenessVerified = eyesOpen;
       
       if (!eyesOpen) {
@@ -557,6 +564,59 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
                       Icons.flip_camera_android,
                       color: Colors.white,
                       size: 24,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            
+            // Manual Scan Button (bottom center) - fallback if auto-capture doesn't work
+            Positioned(
+              bottom: 24,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: (_faceDetected && _selectedClassId != null && !_isScanning) 
+                        ? _scanFace 
+                        : null,
+                    borderRadius: BorderRadius.circular(24),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: (_faceDetected && _selectedClassId != null && !_isScanning)
+                            ? Colors.green.withOpacity(0.9)
+                            : Colors.grey.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _isScanning ? Icons.hourglass_top : Icons.camera_alt,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _isScanning ? "Scanning..." : "Scan Now",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

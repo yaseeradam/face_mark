@@ -829,25 +829,39 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
     final studentId = student['student_id'] ?? 'N/A';
     final confidenceScore = student['confidence_score'] ?? 0.0;
     final attendanceMarked = student['attendance_marked'] ?? false;
+    final photoPath = student['photo_path'];
     
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          // Success Indicator
+          // Student Photo or Success Indicator
           ScaleTransition(
             scale: _successPulseAnimation,
             child: Container(
-              width: 80,
-              height: 80,
+              width: 100,
+              height: 100,
               decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
                 shape: BoxShape.circle,
+                border: Border.all(color: Colors.green, width: 3),
+                color: Colors.green.withOpacity(0.1),
               ),
-              child: const Icon(
-                Icons.check_circle,
-                size: 40,
-                color: Colors.green,
+              child: ClipOval(
+                child: photoPath != null && photoPath.toString().isNotEmpty
+                    ? Image.network(
+                        '${ApiService.baseUrl}/uploads/$photoPath',
+                        fit: BoxFit.cover,
+                        errorBuilder: (c, o, s) => const Icon(
+                          Icons.check_circle,
+                          size: 50,
+                          color: Colors.green,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.check_circle,
+                        size: 50,
+                        color: Colors.green,
+                      ),
               ),
             ),
           ),

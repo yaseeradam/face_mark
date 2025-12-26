@@ -86,6 +86,7 @@ async def verify_face(
         
         attendance_marked = False
         student_name = None
+        photo_path = None
         
         if success and student_id:
             try:
@@ -93,17 +94,24 @@ async def verify_face(
                 await attendance_service.mark_attendance(student_id, class_id, confidence_score, db)
                 attendance_marked = True
                 
-                # Get student name
+                # Get student name and photo
                 from ..db import crud
                 student = crud.get_student_by_id(db, student_id)
                 if student:
                     student_name = student.full_name
+                    photo_path = student.photo_path
                     
             except ValueError as e:
                 # Attendance already marked or other error
                 if "already marked" in str(e):
                     attendance_marked = False
                     message += " (Attendance already marked today)"
+                    # Still get student info for display
+                    from ..db import crud
+                    student = crud.get_student_by_id(db, student_id)
+                    if student:
+                        student_name = student.full_name
+                        photo_path = student.photo_path
         
         return FaceVerifyResponse(
             success=success,
@@ -111,7 +119,8 @@ async def verify_face(
             student_id=student_id,
             student_name=student_name,
             confidence_score=confidence_score,
-            attendance_marked=attendance_marked
+            attendance_marked=attendance_marked,
+            photo_path=photo_path
         )
         
     except Exception as e:

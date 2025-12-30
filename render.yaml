@@ -10,9 +10,9 @@ databases:
 services:
   - type: web
     name: face-attendance-backend
-    rootDir: attendance_backend
     runtime: python
     plan: free
+    rootDir: attendance_backend
     buildCommand: |
       pip install --upgrade pip
       pip install -r requirements.txt

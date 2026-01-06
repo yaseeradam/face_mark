@@ -76,7 +76,12 @@ class ApiService {
         return {'success': true, 'data': data};
       } else {
         final error = response.body.isNotEmpty ? jsonDecode(response.body) : {};
-        return {'success': false, 'error': error['detail'] ?? error['message'] ?? error['error'] ?? 'Request failed'};
+        // Handle case where detail could be a List (FastAPI validation errors)
+        var errorMessage = error['detail'] ?? error['message'] ?? error['error'] ?? 'Request failed';
+        if (errorMessage is List) {
+          errorMessage = errorMessage.map((e) => e['msg'] ?? e.toString()).join(', ');
+        }
+        return {'success': false, 'error': errorMessage.toString()};
       }
     } catch (e) {
       return {'success': false, 'error': 'Connection error: ${e.toString()}'};
@@ -334,7 +339,11 @@ class ApiService {
 
   // Attendance endpoints
   static Future<Map<String, dynamic>> markAttendance(Map<String, dynamic> attendanceData) async {
-    return await _makeRequest('POST', '/attendance/mark', body: attendanceData);
+    final studentId = attendanceData['student_id'];
+    final classId = attendanceData['class_id'];
+    final confidenceScore = attendanceData['confidence_score'] ?? 0.0;
+    final endpoint = '/attendance/mark?student_id=$studentId&class_id=$classId&confidence_score=$confidenceScore';
+    return await _makeRequest('POST', endpoint);
   }
 
   static Future<Map<String, dynamic>> getTodayAttendance({int? classId}) async {

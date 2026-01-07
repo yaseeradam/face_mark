@@ -29,6 +29,8 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
   bool _isFaceValid = false;
   bool _isLivenessVerified = false;
   bool _faceDetected = false;
+  bool _isSmiling = false; // Smile detection for liveness
+  String _guidanceMessage = "Position your face in the frame";
   
   // Auto-capture state
   DateTime? _lastCaptureTime;
@@ -167,23 +169,36 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
       if (faces.isEmpty) {
         _faceDetected = false;
         _isFaceValid = false;
+        _isSmiling = false;
         _readyFrameCount = 0;
+        _guidanceMessage = "Position your face in the frame";
         return;
       }
       
       final face = faces.first;
       _faceDetected = true;
       
-      // Basic validation
-      final headAngleY = face.headEulerAngleY;
-      final headAngleZ = face.headEulerAngleZ;
-      bool isHeadStraight = headAngleY != null && headAngleZ != null &&
-                           headAngleY.abs() <= 20 && headAngleZ.abs() <= 15;
+      // Face validation
+      final headAngleY = face.headEulerAngleY ?? 0;
+      final headAngleZ = face.headEulerAngleZ ?? 0;
+      final smileProbability = face.smilingProbability ?? 0.0;
       
-      _isFaceValid = isHeadStraight;
-      _isLivenessVerified = true; // Simplified for now
-
-      if (_isFaceValid) {
+      bool isHeadStraight = headAngleY.abs() <= 20 && headAngleZ.abs() <= 15;
+      _isSmiling = smileProbability > 0.6;
+      
+      // Require both valid face position AND smile
+      _isFaceValid = isHeadStraight && _isSmiling;
+      _isLivenessVerified = _isSmiling;
+      
+      // Update guidance message
+      if (!isHeadStraight) {
+        _guidanceMessage = "Look straight at the camera";
+        _readyFrameCount = 0;
+      } else if (!_isSmiling) {
+        _guidanceMessage = "😊 Please smile to verify";
+        _readyFrameCount = 0;
+      } else if (_isFaceValid) {
+        _guidanceMessage = "Perfect! Hold steady...";
         _readyFrameCount++;
         
         if (_readyFrameCount >= _requiredReadyFrames && !_isScanning) {
@@ -191,14 +206,12 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
            final canCapture = _lastCaptureTime == null || 
                             now.difference(_lastCaptureTime!) > _autoCaptureCooldown;
            
-           if (canCapture && _recognizedStudent == null) { // Only capture if not already showing result
+           if (canCapture && _recognizedStudent == null) {
              _lastCaptureTime = now;
              _readyFrameCount = 0;
              Future.microtask(() => _identifyFace());
            }
         }
-      } else {
-        _readyFrameCount = 0;
       }
     });
   }
@@ -444,12 +457,38 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
                       bottom: 24,
                       left: 0,
                       right: 0,
-                      child: Text(
-                        "Hold still for verification",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 14,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 24),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: _isSmiling 
+                                ? Colors.green.withOpacity(0.5) 
+                                : Colors.white.withOpacity(0.2),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _isSmiling ? Icons.check_circle : Icons.info_outline,
+                              color: _isSmiling ? Colors.green : Colors.white70,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _guidanceMessage,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: _isSmiling ? Colors.green[300] : Colors.white.withOpacity(0.9),
+                                fontSize: 14,
+                                fontWeight: _isSmiling ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -882,30 +921,122 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E2936) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, -5))
+        ],
       ),
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.error_outline, size: 48, color: Colors.amber),
-          const SizedBox(height: 16),
-          const Text("Not Recognized", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _resetScan,
-              child: const Text("Try Again"),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+          // Error Icon with background
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.1),
+              shape: BoxShape.circle,
             ),
-          )
+            child: const Icon(Icons.person_off_outlined, size: 48, color: Colors.redAccent),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            "Face Not Recognized",
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "This person is not registered in the system",
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey[600], fontSize: 14),
+          ),
+          const SizedBox(height: 20),
+          
+          // Helpful Tips Section
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.lightbulb_outline, size: 18, color: Colors.amber[700]),
+                    const SizedBox(width: 8),
+                    Text(
+                      "Quick Tips",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.amber[700],
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _buildTipItem(Icons.wb_sunny_outlined, "Ensure good lighting on your face"),
+                const SizedBox(height: 8),
+                _buildTipItem(Icons.center_focus_strong, "Position face within the frame"),
+                const SizedBox(height: 8),
+                _buildTipItem(Icons.person_add_outlined, "Register first if you're a new student"),
+              ],
+            ),
+          ),
+          
+          const SizedBox(height: 20),
+          
+          // Action Buttons
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pushReplacementNamed('/register-student');
+                  },
+                  icon: const Icon(Icons.person_add, size: 18),
+                  label: const Text("Register"),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton.icon(
+                  onPressed: _resetScan,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text("Scan Again"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
+    );
+  }
+  
+  Widget _buildTipItem(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.grey),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 13, color: Colors.grey),
+          ),
+        ),
+      ],
     );
   }
   

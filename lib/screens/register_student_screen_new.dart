@@ -12,6 +12,9 @@ class RegisterStudentScreenNew extends StatefulWidget {
   State<RegisterStudentScreenNew> createState() => _RegisterStudentScreenNewState();
 }
 
+// Liveness challenge types
+enum LivenessChallenge { blink, smile, turnHead }
+
 class _RegisterStudentScreenNewState extends State<RegisterStudentScreenNew> 
     with TickerProviderStateMixin {
   // Form Controllers
@@ -32,12 +35,32 @@ class _RegisterStudentScreenNewState extends State<RegisterStudentScreenNew>
   late AnimationController _successPulseController;
   late Animation<double> _successPulseAnimation;
   
-  // Face Scanning State
-  List<XFile> _capturedFaces = []; // Store 3 face scans
-  int _currentScanCount = 0;
-  final int _requiredScans = 3;
+  // Liveness Challenge State
+  final List<LivenessChallenge> _challenges = [
+    LivenessChallenge.blink,
+    LivenessChallenge.smile,
+    LivenessChallenge.turnHead,
+  ];
+  int _currentChallengeIndex = 0;
+  List<bool> _challengeCompleted = [false, false, false];
   bool _isScanningPhase = true; // true = scanning, false = form filling
   bool _isCapturing = false;
+  
+  // Blink detection state
+  bool _previousEyesClosed = false;
+  bool _blinkDetected = false;
+  
+  // Smile detection state
+  bool _smileDetected = false;
+  
+  // Head turn detection state
+  bool _headTurnDetected = false;
+  bool _wasHeadCentered = false;
+  
+  // Face capture after challenges
+  List<XFile> _capturedFaces = [];
+  int _currentScanCount = 0;
+  final int _requiredScans = 1; // Only 1 scan needed after challenges
   
   // Face Detection Feedback
   String _faceGuidanceMessage = "Position your face in the frame";
@@ -46,12 +69,16 @@ class _RegisterStudentScreenNewState extends State<RegisterStudentScreenNew>
   bool _isLivenessVerified = false;
   bool _faceDetected = false;
   int _readyFrameCount = 0;
-  static const _requiredReadyFrames = 10; // More frames for better quality
+  static const _requiredReadyFrames = 5; // Faster after liveness verified
   
   // Form State
   int? _selectedClassId;
   List<Map<String, dynamic>> _classes = [];
   bool _isRegistering = false;
+  
+  // Helper getters
+  LivenessChallenge get _currentChallenge => _challenges[_currentChallengeIndex];
+  bool get _allChallengesCompleted => _challengeCompleted.every((c) => c);
 
   @override
   void initState() {
@@ -227,50 +254,135 @@ class _RegisterStudentScreenNewState extends State<RegisterStudentScreenNew>
         _faceGuidanceMessage = "No face detected";
         _faceGuidanceColor = Colors.orange;
         _readyFrameCount = 0;
+        _previousEyesClosed = false;
         return;
       }
       
       final face = faces.first;
       _faceDetected = true;
       
-      final headAngleY = face.headEulerAngleY;
-      final headAngleZ = face.headEulerAngleZ;
-      final leftEyeOpen = face.leftEyeOpenProbability;
-      final rightEyeOpen = face.rightEyeOpenProbability;
+      final headAngleY = face.headEulerAngleY ?? 0;
+      final headAngleZ = face.headEulerAngleZ ?? 0;
+      final leftEyeOpen = face.leftEyeOpenProbability ?? 0.5;
+      final rightEyeOpen = face.rightEyeOpenProbability ?? 0.5;
+      final smileProbability = face.smilingProbability ?? 0.0;
       
-      bool isHeadStraight = headAngleY != null && headAngleZ != null &&
-                           headAngleY.abs() <= 12 && headAngleZ.abs() <= 8;
-      bool eyesOpen = leftEyeOpen != null && rightEyeOpen != null &&
-                     leftEyeOpen > 0.5 && rightEyeOpen > 0.5;
+      bool isHeadStraight = headAngleY.abs() <= 15 && headAngleZ.abs() <= 10;
+      bool eyesClosed = leftEyeOpen < 0.3 && rightEyeOpen < 0.3;
+      bool eyesOpen = leftEyeOpen > 0.5 && rightEyeOpen > 0.5;
+      bool isSmiling = smileProbability > 0.7;
+      bool headTurned = headAngleY.abs() > 25;
+      bool headCentered = headAngleY.abs() <= 15;
       
-      _isFaceValid = isHeadStraight && eyesOpen;
-      _isLivenessVerified = eyesOpen;
-      
-      if (!eyesOpen) {
-        _faceGuidanceMessage = "Please open your eyes";
-        _faceGuidanceColor = Colors.orange;
-        _readyFrameCount = 0;
-      } else if (!isHeadStraight) {
-        _faceGuidanceMessage = "Please look straight";
-        _faceGuidanceColor = Colors.orange;
-        _readyFrameCount = 0;
-      } else if (_isFaceValid && _isLivenessVerified) {
-        _readyFrameCount++;
+      // If all challenges completed, proceed to capture
+      if (_allChallengesCompleted) {
+        _isFaceValid = isHeadStraight && eyesOpen;
+        _isLivenessVerified = true;
         
-        if (_readyFrameCount >= _requiredReadyFrames && !_isCapturing) {
-          _faceGuidanceMessage = "Perfect! Capturing...";
-          _faceGuidanceColor = Colors.green;
-          Future.microtask(() => _captureFace());
-        } else {
-          _faceGuidanceMessage = "Hold steady... ${_requiredReadyFrames - _readyFrameCount}";
-          _faceGuidanceColor = Colors.green;
+        if (_isFaceValid && !_isCapturing) {
+          _readyFrameCount++;
+          if (_readyFrameCount >= _requiredReadyFrames) {
+            _faceGuidanceMessage = "Perfect! Capturing...";
+            _faceGuidanceColor = Colors.green;
+            Future.microtask(() => _captureFace());
+          } else {
+            _faceGuidanceMessage = "Hold steady... ${_requiredReadyFrames - _readyFrameCount}";
+            _faceGuidanceColor = Colors.green;
+          }
+        } else if (!_isFaceValid) {
+          _faceGuidanceMessage = "Look straight at the camera";
+          _faceGuidanceColor = Colors.orange;
+          _readyFrameCount = 0;
         }
-      } else {
-        _faceGuidanceMessage = "Hold steady...";
-        _faceGuidanceColor = Colors.white70;
-        _readyFrameCount = 0;
+        return;
       }
+      
+      // Process current challenge
+      switch (_currentChallenge) {
+        case LivenessChallenge.blink:
+          // Blink detection: eyes must close then reopen
+          if (eyesClosed && !_previousEyesClosed) {
+            _previousEyesClosed = true;
+          } else if (eyesOpen && _previousEyesClosed) {
+            // Blink completed!
+            _blinkDetected = true;
+            _challengeCompleted[_currentChallengeIndex] = true;
+            _previousEyesClosed = false;
+            _advanceToNextChallenge();
+          }
+          
+          if (!_blinkDetected) {
+            _faceGuidanceMessage = "👁️ Please blink your eyes";
+            _faceGuidanceColor = Colors.blue;
+          }
+          break;
+          
+        case LivenessChallenge.smile:
+          if (isSmiling) {
+            _smileDetected = true;
+            _challengeCompleted[_currentChallengeIndex] = true;
+            _advanceToNextChallenge();
+          } else {
+            _faceGuidanceMessage = "😊 Please smile";
+            _faceGuidanceColor = Colors.blue;
+          }
+          break;
+          
+        case LivenessChallenge.turnHead:
+          // Head turn: must turn head then return to center
+          if (headTurned && !_headTurnDetected) {
+            _headTurnDetected = true;
+            _wasHeadCentered = false;
+          } else if (_headTurnDetected && headCentered && !_wasHeadCentered) {
+            _wasHeadCentered = true;
+            _challengeCompleted[_currentChallengeIndex] = true;
+            _advanceToNextChallenge();
+          }
+          
+          if (!_challengeCompleted[_currentChallengeIndex]) {
+            if (!_headTurnDetected) {
+              _faceGuidanceMessage = "↔️ Turn your head left or right";
+              _faceGuidanceColor = Colors.blue;
+            } else {
+              _faceGuidanceMessage = "↔️ Now look back at the camera";
+              _faceGuidanceColor = Colors.green;
+            }
+          }
+          break;
+      }
+      
+      _isFaceValid = false; // Not valid until all challenges complete
+      _isLivenessVerified = false;
     });
+  }
+  
+  void _advanceToNextChallenge() {
+    if (_currentChallengeIndex < _challenges.length - 1) {
+      _currentChallengeIndex++;
+      // Reset states for next challenge
+      _previousEyesClosed = false;
+      _headTurnDetected = false;
+      _wasHeadCentered = false;
+      
+      // Show success feedback briefly
+      _faceGuidanceMessage = "✓ Challenge completed!";
+      _faceGuidanceColor = Colors.green;
+      
+      // Play success animation
+      _successPulseController.forward().then((_) {
+        _successPulseController.reverse();
+      });
+    } else {
+      // All challenges completed
+      _faceGuidanceMessage = "All challenges completed! Hold steady...";
+      _faceGuidanceColor = Colors.green;
+      _readyFrameCount = 0;
+      
+      // Play success animation
+      _successPulseController.forward().then((_) {
+        _successPulseController.reverse();
+      });
+    }
   }
   
   Future<void> _captureFace() async {
@@ -404,10 +516,77 @@ class _RegisterStudentScreenNewState extends State<RegisterStudentScreenNew>
       _capturedFaces.clear();
       _currentScanCount = 0;
       _isScanningPhase = true;
+      
+      // Reset liveness challenge states
+      _currentChallengeIndex = 0;
+      _challengeCompleted = [false, false, false];
+      _blinkDetected = false;
+      _smileDetected = false;
+      _headTurnDetected = false;
+      _wasHeadCentered = false;
+      _previousEyesClosed = false;
+      _readyFrameCount = 0;
     });
     
     // Reinitialize camera
     _initializeCamera();
+  }
+  
+  Widget _buildChallengeIndicator({
+    required IconData icon,
+    required String label,
+    required bool isCompleted,
+    required bool isActive,
+    required bool isDark,
+  }) {
+    final Color bgColor;
+    final Color iconColor;
+    final Color borderColor;
+    
+    if (isCompleted) {
+      bgColor = Colors.green.withOpacity(0.2);
+      iconColor = Colors.green;
+      borderColor = Colors.green;
+    } else if (isActive) {
+      bgColor = Colors.blue.withOpacity(0.2);
+      iconColor = Colors.blue;
+      borderColor = Colors.blue;
+    } else {
+      bgColor = isDark ? Colors.grey[800]! : Colors.grey[200]!;
+      iconColor = isDark ? Colors.grey[500]! : Colors.grey[400]!;
+      borderColor = isDark ? Colors.grey[700]! : Colors.grey[300]!;
+    }
+    
+    return Column(
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: bgColor,
+            shape: BoxShape.circle,
+            border: Border.all(color: borderColor, width: 2),
+          ),
+          child: Icon(
+            isCompleted ? Icons.check : icon,
+            color: iconColor,
+            size: 24,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+            color: isCompleted 
+                ? Colors.green 
+                : (isActive ? Colors.blue : (isDark ? Colors.grey[400] : Colors.grey[600])),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -451,46 +630,60 @@ class _RegisterStudentScreenNewState extends State<RegisterStudentScreenNew>
   Widget _buildScanningPhase(ThemeData theme, bool isDark) {
     return Column(
       children: [
-        // Progress Indicator
+        // Challenge Progress Indicator
         Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
               Text(
-                "Scan $_currentScanCount/$_requiredScans",
+                _allChallengesCompleted 
+                    ? "Liveness Verified!" 
+                    : "Security Check ${_currentChallengeIndex + 1}/3",
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
+                  color: _allChallengesCompleted ? Colors.green : theme.colorScheme.primary,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
-                "Please position your face in the frame",
+                _allChallengesCompleted 
+                    ? "Hold steady for photo capture"
+                    : "Complete the challenges below",
                 style: TextStyle(
                   fontSize: 14,
                   color: isDark ? Colors.grey[400] : Colors.grey[600],
                 ),
               ),
               const SizedBox(height: 16),
-              // Progress dots
+              // Challenge progress indicators
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(_requiredScans, (index) {
-                  return Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    width: 40,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: index < _currentScanCount 
-                          ? Colors.green 
-                          : (index == _currentScanCount && _isFaceValid
-                              ? Colors.orange
-                              : Colors.grey[300]),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  );
-                }),
+                children: [
+                  _buildChallengeIndicator(
+                    icon: Icons.remove_red_eye_outlined,
+                    label: "Blink",
+                    isCompleted: _challengeCompleted[0],
+                    isActive: _currentChallengeIndex == 0 && !_allChallengesCompleted,
+                    isDark: isDark,
+                  ),
+                  const SizedBox(width: 16),
+                  _buildChallengeIndicator(
+                    icon: Icons.sentiment_satisfied_alt,
+                    label: "Smile",
+                    isCompleted: _challengeCompleted[1],
+                    isActive: _currentChallengeIndex == 1 && !_allChallengesCompleted,
+                    isDark: isDark,
+                  ),
+                  const SizedBox(width: 16),
+                  _buildChallengeIndicator(
+                    icon: Icons.swap_horiz,
+                    label: "Turn",
+                    isCompleted: _challengeCompleted[2],
+                    isActive: _currentChallengeIndex == 2 && !_allChallengesCompleted,
+                    isDark: isDark,
+                  ),
+                ],
               ),
             ],
           ),

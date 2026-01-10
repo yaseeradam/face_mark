@@ -8,7 +8,7 @@ class ApiService {
   // For Android emulator use 10.0.2.2, for iOS simulator use localhost
   // For physical device via USB: use localhost with adb reverse
   // For physical device via WiFi: use computer's local IP
-  static const String baseUrl = 'http://192.168.43.70:8000'; // Network connection
+  static const String baseUrl = 'http://13.51.55.238:8100'; // Network connection
   static String? _token;
 
   static Future<bool> _hasConnection() async {

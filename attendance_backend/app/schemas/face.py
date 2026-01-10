@@ -13,6 +13,7 @@ class FaceVerifyResponse(BaseModel):
     student_id: Optional[int] = None
     student_name: Optional[str] = None
     confidence_score: Optional[float] = None
+    threshold: Optional[float] = None  # Similarity threshold used
     attendance_marked: Optional[bool] = None
     photo_path: Optional[str] = None
     class_id: Optional[int] = None

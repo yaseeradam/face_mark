@@ -85,7 +85,7 @@ async def verify_face(
         image_data = await file.read()
         
         # Verify face
-        success, message, student_id, confidence_score = await face_service.verify_face(image_data, db, class_id)
+        success, message, student_id, confidence_score, threshold = await face_service.verify_face(image_data, db, class_id)
         
         attendance_marked = False
         student_name = None
@@ -125,6 +125,7 @@ async def verify_face(
             student_id=student_id,
             student_name=student_name,
             confidence_score=confidence_score,
+            threshold=threshold,
             attendance_marked=attendance_marked,
             photo_path=photo_path,
             class_id=target_class_id

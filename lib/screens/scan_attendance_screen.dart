@@ -92,6 +92,25 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
     }
   }
   
+  Future<void> _flipCamera() async {
+    if (_isScanning) return; // Don't flip while scanning
+    
+    // Stop detection and dispose current camera
+    _stopFaceDetection();
+    await _cameraController?.dispose();
+    
+    // Toggle camera direction
+    setState(() {
+      _cameraDirection = _cameraDirection == CameraLensDirection.front
+          ? CameraLensDirection.back
+          : CameraLensDirection.front;
+      _isCameraInitialized = false;
+    });
+    
+    // Reinitialize with new direction
+    await _initializeCamera();
+  }
+  
   void _startFaceDetection() {
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
     
@@ -250,11 +269,29 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
         
         // Don't restart scanning immediately, wait for user action
       } else {
-        debugPrint('❌ Face Not Recognized');
+        // Check if we have confidence score and threshold information
+        final data = result['data'];
+        final confidenceScore = data?['confidence_score'];
+        final threshold = data?['threshold'];
+        
+        String errorMessage = 'Face not recognized';
+        
+        // If we have both confidence and threshold, show detailed message
+        if (confidenceScore != null && threshold != null) {
+          final confidencePercent = (confidenceScore * 100).toStringAsFixed(0);
+          final thresholdPercent = (threshold * 100).toStringAsFixed(0);
+          errorMessage = 'Low confidence: $confidencePercent% (required: $thresholdPercent%)';
+        } else if (data?['message'] != null) {
+          errorMessage = data['message'];
+        }
+        
+        debugPrint('❌ Face Not Recognized: $errorMessage');
         setState(() {
           _recognizedStudent = {
             'error': true, 
-            'message': 'Face not recognized'
+            'message': errorMessage,
+            'confidence_score': confidenceScore,
+            'threshold': threshold,
           };
           _showShimmer = false; // Show error state
           _isScanning = false;
@@ -451,6 +488,35 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
                     
                     // Face Frame & Scanner
                     Center(child: _buildFaceFrame()),
+                    
+                    // Flip Camera Button (top-right)
+                    Positioned(
+                      top: 16,
+                      right: 16,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: _flipCamera,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.3),
+                                width: 1,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.flip_camera_android,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                     
                     // Guidance Text
                     Positioned(

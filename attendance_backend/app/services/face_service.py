@@ -87,7 +87,7 @@ class FaceService:
         except Exception as e:
             return False, f"Error registering face: {str(e)}"
     
-    async def verify_face(self, image_data: bytes, db: Session, class_id: Optional[int] = None) -> Tuple[bool, str, Optional[int], Optional[float]]:
+    async def verify_face(self, image_data: bytes, db: Session, class_id: Optional[int] = None) -> Tuple[bool, str, Optional[int], Optional[float], Optional[float]]:
         """Verify a face against enrolled students, optionally filtered by class
         
         Args:
@@ -96,9 +96,12 @@ class FaceService:
             class_id: Optional Class ID to search within
             
         Returns:
-            Tuple[success, message, student_id, confidence_score]
+            Tuple[success, message, student_id, confidence_score, threshold]
         """
         try:
+            from ..core.config import settings
+            threshold = settings.face_similarity_threshold
+            
             print(f"\n{'='*60}")
             print(f"🔍 FACE VERIFICATION STARTED {'for class ' + str(class_id) if class_id else 'GLOBAL SEARCH'}")
             print(f"{'='*60}")
@@ -107,13 +110,13 @@ class FaceService:
             is_valid, message = validate_image_format(image_data)
             if not is_valid:
                 print(f"❌ Image validation failed: {message}")
-                return False, message, None, None
+                return False, message, None, None, threshold
             
             # Preprocess image
             image = preprocess_image(image_data)
             if image is None:
                 print("❌ Image preprocessing failed")
-                return False, "Failed to process image", None, None
+                return False, "Failed to process image", None, None, threshold
             
             # Resize if needed
             image = resize_image_if_needed(image)
@@ -123,7 +126,7 @@ class FaceService:
             embedding_json, embed_message = generate_embedding(image)
             if embedding_json is None:
                 print(f"❌ Embedding generation failed: {embed_message}")
-                return False, embed_message, None, None
+                return False, embed_message, None, None, threshold
             
             print(f"✅ Embedding generated successfully (length: {len(embedding_json)} chars)")
             target_embedding = embedding_from_json(embedding_json)
@@ -138,7 +141,7 @@ class FaceService:
             
             if not face_embeddings:
                 print(f"⚠️ No enrolled faces found")
-                return False, "No enrolled faces found", None, None
+                return False, "No enrolled faces found", None, None, threshold
             
             print(f"✅ Found {len(face_embeddings)} enrolled face(s)")
             
@@ -156,13 +159,13 @@ class FaceService:
                 student = crud.get_student_by_id(db, best_student_id)
                 print(f"\n✅ MATCH FOUND: {student.full_name} (ID: {best_student_id})")
                 print(f"{'='*60}\n")
-                return True, f"Face recognized: {student.full_name}", best_student_id, best_similarity
+                return True, f"Face recognized: {student.full_name}", best_student_id, best_similarity, threshold
             else:
-                print(f"\n❌ NO MATCH: Best similarity {best_similarity:.4f} below threshold")
+                print(f"\n❌ NO MATCH: Best similarity {best_similarity:.4f} below threshold {threshold}")
                 print(f"{'='*60}\n")
-                return False, "Face not recognized", None, best_similarity
+                return False, f"Face not recognized (confidence: {best_similarity:.2%}, required: {threshold:.2%})", None, best_similarity, threshold
                 
         except Exception as e:
             print(f"\n❌ ERROR in verify_face: {str(e)}")
             print(f"{'='*60}\n")
-            return False, f"Error verifying face: {str(e)}", None, None
+            return False, f"Error verifying face: {str(e)}", None, None, None

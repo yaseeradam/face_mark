@@ -7,7 +7,8 @@ plugins {
 
 android {
     namespace = "com.example.frontalminds_fr"
-    compileSdk = flutter.compileSdkVersion
+    // Plugins in this project require Android SDK 36
+    compileSdk = 36
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

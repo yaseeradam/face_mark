@@ -260,13 +260,31 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
       if (!mounted) return;
       
       if (result['success'] && result['data'] != null) {
-        debugPrint('✅ Face Identified: ${result['data']}');
+        final data = Map<String, dynamic>.from(result['data'] as Map);
+        debugPrint('✅ Face Identified: $data');
+
+        // Defensive: backend can sometimes return success without a valid match
+        final hasStudentId = data['student_id'] != null || data['student_student_id'] != null;
+        final hasClassId = data['class_id'] != null;
+
+        if (!hasStudentId || !hasClassId) {
+          setState(() {
+            _recognizedStudent = {
+              'error': true,
+              'message': "This person is not registered in the system",
+            };
+            _showShimmer = false;
+            _isScanning = false;
+          });
+          return;
+        }
+
         setState(() {
-          _recognizedStudent = result['data'];
+          _recognizedStudent = data;
           _showShimmer = false;
           _isScanning = false;
         });
-        
+
         // Don't restart scanning immediately, wait for user action
       } else {
         // Check if we have confidence score and threshold information
@@ -702,9 +720,17 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
   Widget _buildResultSheet(ThemeData theme, bool isDark) {
     // If shimmer is active or no result yet, show shimmer
     if (_showShimmer || (_recognizedStudent == null)) {
+      // While scanning, avoid showing placeholder UI that looks like a student card.
+      // If there is currently NO face in frame, show a simple red message only.
+      if (!_faceDetected) {
+        return _buildSimpleRedMessageSheet(
+          isDark,
+          "This person is not registered in the system",
+        );
+      }
       return _buildShimmerSheet(isDark);
     }
-    
+
     // Result
     final student = _recognizedStudent!;
     final isError = student['error'] == true;
@@ -933,6 +959,43 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
     );
   }
   
+  Widget _buildSimpleRedMessageSheet(bool isDark, String message) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2936) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, -5))
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.10),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.person_off_outlined, size: 44, color: Colors.redAccent),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.redAccent,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+
   Widget _buildShimmerSheet(bool isDark) {
     final baseColor = isDark ? Colors.grey[800]! : Colors.grey[300]!;
     

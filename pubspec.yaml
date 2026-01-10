@@ -39,7 +39,7 @@ dependencies:
   camera: ^0.10.5+5
   permission_handler: ^11.0.1
   shared_preferences: ^2.2.2
-  sqflite: ^2.3.0
+  sqflite: ">=2.3.0 <2.4.0"
   path: ^1.8.3
   flutter_secure_storage: ^9.0.0
   connectivity_plus: ^5.0.1

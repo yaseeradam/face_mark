@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
 import '../utils/ui_helpers.dart';
+import 'student_list_screen.dart';
+import 'reports_screen.dart';
 
 class ClassManagementScreen extends ConsumerStatefulWidget {
   const ClassManagementScreen({super.key});
@@ -227,10 +229,35 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
                 itemBuilder: (context) => [
                   const PopupMenuItem(value: 'edit', child: Text('Edit Class')),
                   const PopupMenuItem(value: 'students', child: Text('View Students')),
+                  const PopupMenuItem(value: 'attendance', child: Text('View Attendance')),
                   const PopupMenuItem(value: 'delete', child: Text('Delete Class', style: TextStyle(color: Colors.red))),
                 ],
                 onSelected: (value) {
-                  if (value == 'delete') _deleteClass(cls['id']);
+                  if (value == 'delete') {
+                    _deleteClass(cls['id']);
+                  } else if (value == 'students') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => StudentListScreen(
+                          classId: cls['id'],
+                          className: cls['class_name'],
+                        ),
+                      ),
+                    );
+                  } else if (value == 'attendance') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ReportsScreen(
+                          initialClassId: cls['id'],
+                          initialClassName: cls['class_name'],
+                        ),
+                      ),
+                    );
+                  } else if (value == 'edit') {
+                    _showEditClassDialog(context, cls);
+                  }
                 },
               ),
             ],
@@ -263,7 +290,7 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final nameController = TextEditingController();
     final codeController = TextEditingController();
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -304,6 +331,70 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
               }
             },
             child: const Text("Create"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditClassDialog(BuildContext context, Map<String, dynamic> cls) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final nameController = TextEditingController(text: (cls['class_name'] ?? '').toString());
+    final codeController = TextEditingController(text: (cls['class_code'] ?? '').toString());
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Edit Class"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: InputDecoration(
+                labelText: "Class Name",
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: isDark ? const Color(0xFF1A2633) : Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: codeController,
+              decoration: InputDecoration(
+                labelText: "Class Code",
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: isDark ? const Color(0xFF1A2633) : Colors.white,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          FilledButton(
+            onPressed: () async {
+              if (nameController.text.isEmpty || codeController.text.isEmpty) return;
+              Navigator.pop(context);
+
+              final result = await ApiService.updateClass(
+                cls['id'],
+                {
+                  'class_name': nameController.text,
+                  'class_code': codeController.text,
+                },
+              );
+
+              if (!mounted) return;
+              if (result['success']) {
+                UIHelpers.showSuccess(context, 'Class updated');
+                _loadClasses();
+              } else {
+                UIHelpers.showError(context, result['error'] ?? 'Failed to update class');
+              }
+            },
+            child: const Text("Save"),
           ),
         ],
       ),

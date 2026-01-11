@@ -4,7 +4,10 @@ import 'package:intl/intl.dart'; // For date formatting
 import '../services/api_service.dart';
 
 class ReportsScreen extends ConsumerStatefulWidget {
-  const ReportsScreen({super.key});
+  final int? initialClassId;
+  final String? initialClassName;
+
+  const ReportsScreen({super.key, this.initialClassId, this.initialClassName});
 
   @override
   ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
@@ -28,6 +31,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedClassId = widget.initialClassId;
     _loadData();
   }
 
@@ -82,7 +86,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             backgroundColor: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
           ),
         ),
-        title: const Text("Attendance Reports"),
+        title: Text(
+          widget.initialClassName != null
+              ? "Attendance • ${widget.initialClassName}"
+              : "Attendance Reports",
+        ),
         centerTitle: true,
         actions: [
           IconButton(

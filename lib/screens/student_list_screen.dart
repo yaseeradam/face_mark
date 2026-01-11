@@ -6,7 +6,10 @@ import '../services/api_service.dart';
 import '../utils/ui_helpers.dart';
 
 class StudentListScreen extends ConsumerStatefulWidget {
-  const StudentListScreen({super.key});
+  final int? classId;
+  final String? className;
+
+  const StudentListScreen({super.key, this.classId, this.className});
 
   @override
   ConsumerState<StudentListScreen> createState() => _StudentListScreenState();
@@ -18,6 +21,12 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
   String _searchQuery = '';
   String _filterStatus = 'all';
 
+  // Optional attendance-by-date view
+  bool _showAttendance = false;
+  DateTime _selectedDate = DateTime.now();
+  final Set<int> _presentStudentIds = <int>{};
+  bool _isAttendanceLoading = false;
+
   @override
   void initState() {
     super.initState();
@@ -28,7 +37,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
     if (!mounted) return;
     setState(() => _isLoading = true);
     
-    final result = await ApiService.getStudents();
+    final result = await ApiService.getStudents(classId: widget.classId);
     debugPrint('📚 Students API Result: ${result['success']}');
     if (!mounted) return;
     
@@ -83,7 +92,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
                 title: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text("Students", style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text(widget.className != null ? "Students • ${widget.className}" : "Students", style: const TextStyle(fontWeight: FontWeight.bold)),
                     Text("${_students.length} students registered", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
                   ],
                 ),

@@ -75,13 +75,29 @@ class ApiService {
         final data = response.body.isNotEmpty ? jsonDecode(response.body) : {};
         return {'success': true, 'data': data};
       } else {
-        final error = response.body.isNotEmpty ? jsonDecode(response.body) : {};
-        // Handle case where detail could be a List (FastAPI validation errors)
-        var errorMessage = error['detail'] ?? error['message'] ?? error['error'] ?? 'Request failed';
-        if (errorMessage is List) {
-          errorMessage = errorMessage.map((e) => e['msg'] ?? e.toString()).join(', ');
+        // Try to extract meaningful error message
+        String errorMessage = 'Request failed with status ${response.statusCode}';
+
+        try {
+          if (response.body.isNotEmpty) {
+            final error = jsonDecode(response.body);
+            // Handle case where detail could be a List (FastAPI validation errors)
+            final errorDetail = error['detail'] ?? error['message'] ?? error['error'];
+            if (errorDetail != null) {
+              if (errorDetail is List) {
+                errorMessage = errorDetail.map((e) => e['msg'] ?? e.toString()).join(', ');
+              } else {
+                errorMessage = errorDetail.toString();
+              }
+            } else {
+              errorMessage = response.body.toString();
+            }
+          }
+        } catch (e) {
+          errorMessage = 'Server returned invalid JSON: ${response.body}';
         }
-        return {'success': false, 'error': errorMessage.toString()};
+
+        return {'success': false, 'error': errorMessage, 'status_code': response.statusCode};
       }
     } catch (e) {
       return {'success': false, 'error': 'Connection error: ${e.toString()}'};
@@ -137,6 +153,46 @@ class ApiService {
   static Future<void> logout() async {
     await StorageService.clearToken();
     _token = null;
+  }
+
+  // Test connectivity to the server
+  static Future<Map<String, dynamic>> testConnectivity() async {
+    try {
+      if (!await _hasConnection()) {
+        return {'success': false, 'error': 'No internet connection'};
+      }
+
+      final uri = Uri.parse('$baseUrl/health');
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': 'Server is reachable'};
+      } else {
+        return {'success': false, 'error': 'Server not responding properly', 'status': response.statusCode};
+      }
+    } catch (e) {
+      return {'success': false, 'error': 'Cannot connect to server: ${e.toString()}'};
+    }
+  }
+
+  // Test connectivity to the server
+  static Future<Map<String, dynamic>> testConnectivity() async {
+    try {
+      if (!await _hasConnection()) {
+        return {'success': false, 'error': 'No internet connection'};
+      }
+
+      final uri = Uri.parse('$baseUrl/health');
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': 'Server is reachable'};
+      } else {
+        return {'success': false, 'error': 'Server not responding properly', 'status': response.statusCode};
+      }
+    } catch (e) {
+      return {'success': false, 'error': 'Cannot connect to server: ${e.toString()}'};
+    }
   }
 
   // Profile & Settings endpoints

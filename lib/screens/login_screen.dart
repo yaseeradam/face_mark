@@ -208,7 +208,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 fillColor: isDark ? const Color(0xFF101922) : Colors.white,
                               ),
                             ),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 16),
+                            OutlinedButton(
+                              onPressed: () async {
+                                setState(() => _isLoading = true);
+                                final result = await ApiService.testConnectivity();
+                                setState(() => _isLoading = false);
+
+                                if (result['success']) {
+                                  UIHelpers.showSuccess(context, 'Server is reachable');
+                                } else {
+                                  UIHelpers.showError(context, 'Server test failed: ${result['error']}');
+                                }
+                              },
+                              child: const Text("Test Server Connection"),
+                            ),
+                            const SizedBox(height: 16),
                             // Login Button
                             LoadingButton(
                               text: "Log In",

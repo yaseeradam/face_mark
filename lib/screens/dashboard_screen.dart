@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'mark_attendance_screen_1.dart';
@@ -21,6 +22,10 @@ class DashboardScreen extends ConsumerStatefulWidget {
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   bool _isLoading = true;
+  Timer? _refreshTimer;
+  
+  // Auto-refresh interval (30 seconds)
+  static const Duration _refreshInterval = Duration(seconds: 30);
   
   // Real data from API
   int _totalStudents = 0;
@@ -33,7 +38,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   void initState() {
     super.initState();
     _loadDashboardData();
+    _startAutoRefresh();
   }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startAutoRefresh() {
+    _refreshTimer = Timer.periodic(_refreshInterval, (_) {
+      if (mounted) {
+        _loadDashboardData();
+      }
+    });
+  }
+
 
   Future<void> _loadDashboardData() async {
     setState(() => _isLoading = true);
@@ -253,8 +274,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           () => Navigator.pushNamed(context, '/admin-user-management')),
                         _buildActionCard(context, "Reports", Icons.bar_chart, Colors.teal,
                           () => ref.read(navigationProvider.notifier).state = 3),
-                        _buildActionCard(context, "System", Icons.settings, Colors.grey,
-                          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
+                        _buildActionCard(context, "Settings", Icons.settings, Colors.grey,
+                          () => ref.read(navigationProvider.notifier).state = 4),
                       ],
                     ),
                     const SizedBox(height: 24),

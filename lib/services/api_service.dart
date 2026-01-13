@@ -175,26 +175,6 @@ class ApiService {
     }
   }
 
-  // Test connectivity to the server
-  static Future<Map<String, dynamic>> testConnectivity() async {
-    try {
-      if (!await _hasConnection()) {
-        return {'success': false, 'error': 'No internet connection'};
-      }
-
-      final uri = Uri.parse('$baseUrl/health');
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        return {'success': true, 'message': 'Server is reachable'};
-      } else {
-        return {'success': false, 'error': 'Server not responding properly', 'status': response.statusCode};
-      }
-    } catch (e) {
-      return {'success': false, 'error': 'Cannot connect to server: ${e.toString()}'};
-    }
-  }
-
   // Profile & Settings endpoints
   static Future<Map<String, dynamic>> getProfile() async {
     return await _makeRequest('GET', '/teachers/me');

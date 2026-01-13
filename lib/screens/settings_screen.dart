@@ -190,12 +190,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
-          leading: IconButton(
-            onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.arrow_back),
-          ),
           title: const Text("Settings"),
           centerTitle: true,
+          automaticallyImplyLeading: false,
         ),
         body: const Center(child: CircularProgressIndicator()),
       );
@@ -203,12 +200,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back),
-        ),
         title: const Text("Settings"),
         centerTitle: true,
+        automaticallyImplyLeading: false,
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

@@ -4,6 +4,7 @@ import 'dashboard_screen.dart';
 import 'scan_attendance_screen.dart';
 import 'student_list_screen.dart';
 import 'reports_screen.dart';
+import 'settings_screen.dart';
 import '../providers/app_providers.dart';
 
 class MainNavigation extends ConsumerWidget {
@@ -14,6 +15,7 @@ class MainNavigation extends ConsumerWidget {
     ScanAttendanceScreen(),
     StudentListScreen(),
     ReportsScreen(),
+    SettingsScreen(),
   ];
 
   @override
@@ -48,6 +50,7 @@ class MainNavigation extends ConsumerWidget {
                 _buildNavItem(context, ref, 1, Icons.qr_code_scanner_rounded, Icons.qr_code_scanner_outlined, 'Scan'),
                 _buildNavItem(context, ref, 2, Icons.people_rounded, Icons.people_outlined, 'Students'),
                 _buildNavItem(context, ref, 3, Icons.bar_chart_rounded, Icons.bar_chart_outlined, 'Reports'),
+                _buildNavItem(context, ref, 4, Icons.settings_rounded, Icons.settings_outlined, 'Settings'),
               ],
             ),
           ),
@@ -55,6 +58,7 @@ class MainNavigation extends ConsumerWidget {
       ),
     );
   }
+
 
   Widget _buildNavItem(BuildContext context, WidgetRef ref, int index, IconData activeIcon, IconData inactiveIcon, String label) {
     final currentIndex = ref.watch(navigationProvider);

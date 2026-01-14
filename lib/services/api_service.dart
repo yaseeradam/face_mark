@@ -142,10 +142,17 @@ class ApiService {
   // Auth endpoints
   static Future<Map<String, dynamic>> login(String email, String password) async {
     // Skip token refresh on 401 for login since there's no valid token yet
+    final identifier = email.trim();
+    final isEmail = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(identifier);
+    final body = {
+      'identifier': identifier,
+      'password': password,
+      if (isEmail) 'email': identifier, // Backward-compatible with older auth payloads.
+    };
     final result = await _makeRequest(
       'POST',
       '/auth/login',
-      body: {'identifier': email, 'password': password},
+      body: body,
       retryOnAuth: false,
     );
     if (result['success'] && result['data']['access_token'] != null) {

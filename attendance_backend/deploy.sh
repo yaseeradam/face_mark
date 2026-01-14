@@ -1,15 +1,11 @@
 #!/bin/bash
-# Deploy script for Face Attendance Backend
-# Run this on your AWS server after pushing changes to GitHub
+# Deploy script for Face Attendance Backend (No Git Version)
+# This script rebuilds and restarts the Docker container
 
 echo "🚀 Starting deployment..."
 
 # Navigate to project directory
 cd /home/ubuntu/apps/attendance_backend
-
-# Pull latest code
-echo "📥 Pulling latest code from GitHub..."
-git pull origin main
 
 # Build new Docker image
 echo "🔨 Building Docker image..."

@@ -7,7 +7,7 @@ import os
 from .core.config import settings
 from .db.base import engine, Base
 from .ai.insightface_model import face_model
-from .api import auth, teachers, classes, students, attendance, face, dashboard, reports
+from .api import auth, teachers, classes, students, attendance, face, dashboard, reports, organizations
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -52,6 +52,7 @@ app.include_router(attendance.router)
 app.include_router(face.router)
 app.include_router(dashboard.router)
 app.include_router(reports.router)
+app.include_router(organizations.router)
 
 # Mount static files for uploads (student photos)
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")

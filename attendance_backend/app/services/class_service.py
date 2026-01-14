@@ -27,6 +27,18 @@ class ClassService:
     async def get_classes(self, db: Session, teacher_id: Optional[int] = None) -> List[models.Class]:
         """Get all classes, optionally filtered by teacher"""
         return crud.get_classes(db, teacher_id=teacher_id)
+
+    async def get_accessible_classes(self, current_user: dict, db: Session) -> List[models.Class]:
+        """Get classes the current user can access"""
+        role = current_user.get("role")
+        if role == "super_admin":
+            return crud.get_classes(db)
+
+        teacher = crud.get_teacher_by_id(db, current_user["user_id"])
+        if teacher and role == "admin":
+            return crud.get_classes(db, org_id=teacher.organization_id)
+
+        return crud.get_classes(db, teacher_id=current_user["user_id"])
     
     async def get_class_by_id(self, class_id: int, db: Session) -> Optional[models.Class]:
         """Get class by ID"""
@@ -38,10 +50,12 @@ class ClassService:
         if not class_obj:
             return False
         
-        # Admin can access all classes
+        # Admin can access all classes in their org; super admin can access all
         teacher = crud.get_teacher_by_id(db, teacher_id)
-        if teacher and teacher.role == "admin":
-            return True
+        if teacher and teacher.role in ["admin", "super_admin"]:
+            if teacher.role == "super_admin":
+                return True
+            return class_obj.organization_id is not None and class_obj.organization_id == teacher.organization_id
         
         # Teacher can only access their own classes
         return class_obj.teacher_id == teacher_id

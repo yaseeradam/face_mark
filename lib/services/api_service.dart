@@ -142,7 +142,12 @@ class ApiService {
   // Auth endpoints
   static Future<Map<String, dynamic>> login(String email, String password) async {
     // Skip token refresh on 401 for login since there's no valid token yet
-    final result = await _makeRequest('POST', '/auth/login', body: {'email': email, 'password': password}, retryOnAuth: false);
+    final result = await _makeRequest(
+      'POST',
+      '/auth/login',
+      body: {'identifier': email, 'password': password},
+      retryOnAuth: false,
+    );
     if (result['success'] && result['data']['access_token'] != null) {
       _token = result['data']['access_token'];
       await StorageService.saveToken(_token!);
@@ -243,6 +248,23 @@ class ApiService {
     } catch (e) {
       return {'success': false, 'error': 'Connection error: ${e.toString()}'};
     }
+  }
+
+  // Organization management endpoints (Super Admin)
+  static Future<Map<String, dynamic>> getOrganizations() async {
+    return await _makeRequest('GET', '/organizations/');
+  }
+
+  static Future<Map<String, dynamic>> createOrganization(Map<String, dynamic> orgData) async {
+    return await _makeRequest('POST', '/organizations/', body: orgData);
+  }
+
+  static Future<Map<String, dynamic>> updateOrganization(String orgId, Map<String, dynamic> orgData) async {
+    return await _makeRequest('PUT', '/organizations/$orgId', body: orgData);
+  }
+
+  static Future<Map<String, dynamic>> deleteOrganization(String orgId) async {
+    return await _makeRequest('DELETE', '/organizations/$orgId');
   }
 
   // Teacher endpoints

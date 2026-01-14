@@ -20,6 +20,16 @@ class ValidationService {
     return null;
   }
 
+  static String? validateIdentifier(String? value) {
+    if (value == null || value.isEmpty) return 'Email or ID is required';
+    final emailPattern = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    final idPattern = RegExp(r'^[A-Z0-9]+$');
+    if (!emailPattern.hasMatch(value) && !idPattern.hasMatch(value.toUpperCase())) {
+      return 'Enter a valid email or ID';
+    }
+    return null;
+  }
+
   static String? validatePassword(String? value) {
     if (value == null || value.isEmpty) return 'Password is required';
     if (value.length < 6) return 'Password must be at least 6 characters';

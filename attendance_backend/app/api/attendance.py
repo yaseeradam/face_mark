@@ -46,13 +46,11 @@ async def get_attendance_today(
         if not has_access:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this class")
     
-    # For non-admin teachers, filter by their classes
-    if current_user["role"] != "admin" and not class_id:
-        teacher_classes = await class_service.get_classes(db, teacher_id=current_user["user_id"])
-        all_attendance = []
-        for cls in teacher_classes:
-            attendance_records = await attendance_service.get_attendance_today(db, class_id=cls.id)
-            all_attendance.extend(attendance_records)
+    # For non-super admins without class_id, filter by accessible classes
+    if current_user["role"] != "super_admin" and not class_id:
+        accessible_classes = await class_service.get_accessible_classes(current_user, db)
+        class_ids = [cls.id for cls in accessible_classes]
+        all_attendance = await attendance_service.get_attendance_today(db, class_ids=class_ids)
     else:
         all_attendance = await attendance_service.get_attendance_today(db, class_id=class_id)
     
@@ -130,10 +128,15 @@ async def get_attendance_history(
                 raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
         # Get attendance records
+        class_ids = None
+        if current_user["role"] != "super_admin" and not class_id:
+            accessible_classes = await class_service.get_accessible_classes(current_user, db)
+            class_ids = [cls.id for cls in accessible_classes]
+
         if filter_date:
-            records = await attendance_service.get_attendance_by_date(db, filter_date, class_id=class_id)
+            records = await attendance_service.get_attendance_by_date(db, filter_date, class_id=class_id, class_ids=class_ids)
         else:
-            records = await attendance_service.get_attendance_today(db, class_id=class_id)
+            records = await attendance_service.get_attendance_today(db, class_id=class_id, class_ids=class_ids)
         
         result = []
         for record in records:
@@ -168,7 +171,11 @@ async def export_attendance_csv(
     from datetime import datetime
     
     # Get attendance records (Today)
-    records = await attendance_service.get_attendance_today(db)
+    class_ids = None
+    if current_user["role"] != "super_admin":
+        accessible_classes = await class_service.get_accessible_classes(current_user, db)
+        class_ids = [cls.id for cls in accessible_classes]
+    records = await attendance_service.get_attendance_today(db, class_ids=class_ids)
     
     # Create CSV
     output = io.StringIO()

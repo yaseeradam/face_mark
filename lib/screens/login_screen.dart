@@ -27,7 +27,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
-    final emailError = ValidationService.validateEmail(_emailController.text);
+    final emailError = ValidationService.validateIdentifier(_emailController.text);
     final passwordError = ValidationService.validatePassword(_passwordController.text);
     
     if (emailError != null || passwordError != null) {
@@ -44,7 +44,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _isLoading = false);
     
     if (result['success']) {
-      ref.read(authProvider.notifier).login(result['data']['access_token'], result['data']['user'] ?? {});
+      ref.read(authProvider.notifier).login(result['data']['access_token'], result['data']['teacher'] ?? {});
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/dashboard');
       }
@@ -158,7 +158,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               controller: _emailController,
                               decoration: InputDecoration(
                                 prefixIcon: const Icon(Icons.mail_outline),
-                                hintText: "admin@company.com",
+                                hintText: "admin@company.com or ADM001",
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),

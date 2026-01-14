@@ -227,8 +227,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(_currentUser?['full_name'] ?? 'User', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-                Text(_currentUser?['role'] == 'admin' ? 'Administrator' : 'Teacher', style: theme.textTheme.bodyMedium),
+                Text(
+                  _currentUser?['role'] == 'super_admin'
+                      ? 'Super Admin'
+                      : _currentUser?['role'] == 'admin'
+                          ? 'Administrator'
+                          : 'Teacher',
+                  style: theme.textTheme.bodyMedium,
+                ),
                 Text(_currentUser?['email'] ?? '', style: theme.textTheme.bodySmall),
+                if ((_currentUser?['organization_name'] ?? '').toString().isNotEmpty)
+                  Text(_currentUser?['organization_name'] ?? '', style: theme.textTheme.bodySmall),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

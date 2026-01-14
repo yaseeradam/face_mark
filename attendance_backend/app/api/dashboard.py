@@ -5,8 +5,10 @@ from sqlalchemy.orm import Session
 from ..core.security import require_teacher
 from ..db.base import get_db
 from ..db import crud
+from ..services.class_service import ClassService
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+class_service = ClassService()
 
 @router.get("/stats")
 async def get_dashboard_stats(
@@ -15,14 +17,23 @@ async def get_dashboard_stats(
 ):
     """Get dashboard statistics"""
     try:
-        # Get counts
-        students = crud.get_students(db)
-        classes = crud.get_classes(db)
-        teachers = crud.get_teachers(db)
+        accessible_classes = await class_service.get_accessible_classes(current_user, db)
+        class_ids = [cls.id for cls in accessible_classes]
+
+        # Get counts (scoped)
+        students = crud.get_students(db, class_ids=class_ids) if class_ids else []
+        classes = accessible_classes
+
+        teachers = []
+        if current_user["role"] == "super_admin":
+            teachers = crud.get_teachers(db)
+        elif current_user["role"] == "admin":
+            current_teacher = crud.get_teacher_by_id(db, current_user["user_id"])
+            teachers = crud.get_teachers(db, org_id=current_teacher.organization_id if current_teacher else None)
         
         # Today's attendance
         today = date.today()
-        today_attendance = crud.get_attendance_by_date(db, today) if hasattr(crud, 'get_attendance_by_date') else []
+        today_attendance = crud.get_attendance_by_date(db, today, class_ids=class_ids) if hasattr(crud, 'get_attendance_by_date') else []
         
         # Calculate attendance rate
         total_students = len(students) if students else 0
@@ -63,9 +74,12 @@ async def get_recent_activity(
 ):
     """Get recent activity (attendance records)"""
     try:
+        accessible_classes = await class_service.get_accessible_classes(current_user, db)
+        class_ids = [cls.id for cls in accessible_classes]
+
         # Get recent attendance records
         today = date.today()
-        attendance_records = crud.get_attendance_by_date(db, today) if hasattr(crud, 'get_attendance_by_date') else []
+        attendance_records = crud.get_attendance_by_date(db, today, class_ids=class_ids) if hasattr(crud, 'get_attendance_by_date') else []
         
         activities = []
         for record in attendance_records[:limit]:

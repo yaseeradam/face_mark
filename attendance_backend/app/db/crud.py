@@ -6,6 +6,45 @@ from datetime import datetime, date
 from . import models
 from ..core.security import get_password_hash, verify_password
 
+# Organization CRUD
+def create_organization(db: Session, org_data: dict) -> models.Organization:
+    db_org = models.Organization(
+        name=org_data["name"],
+        code=org_data["code"],
+        status=org_data.get("status", "active")
+    )
+    db.add(db_org)
+    db.commit()
+    db.refresh(db_org)
+    return db_org
+
+def get_organization_by_id(db: Session, org_id: int) -> Optional[models.Organization]:
+    return db.query(models.Organization).filter(models.Organization.id == org_id).first()
+
+def get_organization_by_code(db: Session, code: str) -> Optional[models.Organization]:
+    return db.query(models.Organization).filter(models.Organization.code == code).first()
+
+def get_organizations(db: Session) -> List[models.Organization]:
+    return db.query(models.Organization).all()
+
+def update_organization(db: Session, org_id: int, update_data: dict) -> Optional[models.Organization]:
+    org = get_organization_by_id(db, org_id)
+    if org:
+        for key, value in update_data.items():
+            if hasattr(org, key):
+                setattr(org, key, value)
+        db.commit()
+        db.refresh(org)
+    return org
+
+def delete_organization(db: Session, org_id: int) -> bool:
+    org = get_organization_by_id(db, org_id)
+    if org:
+        db.delete(org)
+        db.commit()
+        return True
+    return False
+
 # Teacher CRUD
 def create_teacher(db: Session, teacher_data: dict) -> models.Teacher:
     hashed_password = get_password_hash(teacher_data["password"])
@@ -14,7 +53,9 @@ def create_teacher(db: Session, teacher_data: dict) -> models.Teacher:
         full_name=teacher_data["full_name"],
         email=teacher_data["email"],
         password_hash=hashed_password,
-        role=teacher_data.get("role", "teacher")
+        role=teacher_data.get("role", "teacher"),
+        status=teacher_data.get("status", "active"),
+        organization_id=teacher_data.get("organization_id")
     )
     db.add(db_teacher)
     db.commit()
@@ -24,11 +65,17 @@ def create_teacher(db: Session, teacher_data: dict) -> models.Teacher:
 def get_teacher_by_email(db: Session, email: str) -> Optional[models.Teacher]:
     return db.query(models.Teacher).filter(models.Teacher.email == email).first()
 
+def get_teacher_by_teacher_id(db: Session, teacher_id: str) -> Optional[models.Teacher]:
+    return db.query(models.Teacher).filter(models.Teacher.teacher_id == teacher_id).first()
+
 def get_teacher_by_id(db: Session, teacher_id: int) -> Optional[models.Teacher]:
     return db.query(models.Teacher).filter(models.Teacher.id == teacher_id).first()
 
-def get_teachers(db: Session, skip: int = 0, limit: int = 100) -> List[models.Teacher]:
-    return db.query(models.Teacher).offset(skip).limit(limit).all()
+def get_teachers(db: Session, skip: int = 0, limit: int = 100, org_id: Optional[int] = None) -> List[models.Teacher]:
+    query = db.query(models.Teacher)
+    if org_id:
+        query = query.filter(models.Teacher.organization_id == org_id)
+    return query.offset(skip).limit(limit).all()
 
 def authenticate_teacher(db: Session, email: str, password: str) -> Optional[models.Teacher]:
     teacher = get_teacher_by_email(db, email)
@@ -47,10 +94,12 @@ def create_class(db: Session, class_data: dict) -> models.Class:
 def get_class_by_id(db: Session, class_id: int) -> Optional[models.Class]:
     return db.query(models.Class).filter(models.Class.id == class_id).first()
 
-def get_classes(db: Session, teacher_id: Optional[int] = None) -> List[models.Class]:
+def get_classes(db: Session, teacher_id: Optional[int] = None, org_id: Optional[int] = None) -> List[models.Class]:
     query = db.query(models.Class)
     if teacher_id:
         query = query.filter(models.Class.teacher_id == teacher_id)
+    if org_id:
+        query = query.filter(models.Class.organization_id == org_id)
     return query.all()
 
 # Student CRUD
@@ -67,10 +116,12 @@ def get_student_by_id(db: Session, student_id: int) -> Optional[models.Student]:
 def get_student_by_student_id(db: Session, student_id: str) -> Optional[models.Student]:
     return db.query(models.Student).filter(models.Student.student_id == student_id).first()
 
-def get_students(db: Session, class_id: Optional[int] = None) -> List[models.Student]:
+def get_students(db: Session, class_id: Optional[int] = None, class_ids: Optional[List[int]] = None) -> List[models.Student]:
     query = db.query(models.Student)
     if class_id:
         query = query.filter(models.Student.class_id == class_id)
+    if class_ids:
+        query = query.filter(models.Student.class_id.in_(class_ids))
     return query.all()
 
 def update_student_face_enrolled(db: Session, student_id: int, enrolled: bool, photo_path: str = None) -> models.Student:
@@ -188,13 +239,15 @@ def create_attendance(db: Session, student_id: int, class_id: int, confidence_sc
     db.refresh(db_attendance)
     return db_attendance
 
-def get_attendance_today(db: Session, class_id: Optional[int] = None) -> List[models.Attendance]:
+def get_attendance_today(db: Session, class_id: Optional[int] = None, class_ids: Optional[List[int]] = None) -> List[models.Attendance]:
     today = date.today()
     query = db.query(models.Attendance).filter(
         func.date(models.Attendance.marked_at) == today
     )
     if class_id:
         query = query.filter(models.Attendance.class_id == class_id)
+    if class_ids:
+        query = query.filter(models.Attendance.class_id.in_(class_ids))
     return query.all()
 
 def get_attendance_by_class(db: Session, class_id: int, date_filter: Optional[date] = None) -> List[models.Attendance]:
@@ -221,13 +274,15 @@ def check_attendance_exists(db: Session, student_id: int, class_id: int, check_d
         )
     ).first() is not None
 
-def get_attendance_by_date(db: Session, filter_date: date, class_id: Optional[int] = None) -> List[models.Attendance]:
+def get_attendance_by_date(db: Session, filter_date: date, class_id: Optional[int] = None, class_ids: Optional[List[int]] = None) -> List[models.Attendance]:
     """Get attendance records for a specific date"""
     query = db.query(models.Attendance).filter(
         func.date(models.Attendance.marked_at) == filter_date
     )
     if class_id:
         query = query.filter(models.Attendance.class_id == class_id)
+    if class_ids:
+        query = query.filter(models.Attendance.class_id.in_(class_ids))
     return query.all()
 
 def get_attendance_by_class_and_date_range(db: Session, class_id: int, start_date: date, end_date: date) -> List[models.Attendance]:

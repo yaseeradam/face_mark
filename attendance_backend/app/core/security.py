@@ -36,7 +36,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     # 🔧 DEV MODE: Skip authentication
     if DEV_MODE:
-        return {"user_id": 1, "role": "admin"}
+        return {"user_id": 1, "role": "super_admin"}
     
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
@@ -54,17 +54,25 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
 def require_admin(current_user: dict = Depends(verify_token)):
     # 🔧 DEV MODE: Always return admin
     if DEV_MODE:
-        return {"user_id": 1, "role": "admin"}
+        return {"user_id": 1, "role": "super_admin"}
     
-    if current_user["role"] != "admin":
+    if current_user["role"] not in ["admin", "super_admin"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
 
 def require_teacher(current_user: dict = Depends(verify_token)):
     # 🔧 DEV MODE: Always return admin (has teacher permissions)
     if DEV_MODE:
-        return {"user_id": 1, "role": "admin"}
+        return {"user_id": 1, "role": "super_admin"}
     
-    if current_user["role"] not in ["admin", "teacher"]:
+    if current_user["role"] not in ["admin", "teacher", "super_admin"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher access required")
+    return current_user
+
+def require_super_admin(current_user: dict = Depends(verify_token)):
+    if DEV_MODE:
+        return {"user_id": 1, "role": "super_admin"}
+
+    if current_user["role"] != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Super admin access required")
     return current_user

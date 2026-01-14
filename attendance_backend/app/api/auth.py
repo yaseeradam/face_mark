@@ -6,15 +6,17 @@ from ..core.security import create_access_token
 from ..core.config import settings
 from ..db.base import get_db
 from ..services.teacher_service import TeacherService
-from ..schemas.teacher import TeacherLogin, TokenResponse, TeacherResponse
+from typing import Union
+from ..schemas.teacher import TeacherLogin, TeacherLoginLegacy, TokenResponse, TeacherResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 teacher_service = TeacherService()
 
 @router.post("/login", response_model=TokenResponse)
-async def login(login_data: TeacherLogin, db: Session = Depends(get_db)):
+async def login(login_data: Union[TeacherLogin, TeacherLoginLegacy], db: Session = Depends(get_db)):
     """Teacher login endpoint"""
-    teacher = await teacher_service.authenticate_teacher(login_data.email, login_data.password, db)
+    identifier = login_data.identifier if isinstance(login_data, TeacherLogin) else login_data.email
+    teacher = await teacher_service.authenticate_teacher(identifier, login_data.password, db)
     
     if not teacher:
         raise HTTPException(

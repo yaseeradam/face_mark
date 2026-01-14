@@ -4,6 +4,19 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .base import Base
 
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True, nullable=False)
+    code = Column(String, unique=True, index=True, nullable=False)
+    status = Column(String, default="active")  # active, inactive
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    teachers = relationship("Teacher", back_populates="organization")
+    classes = relationship("Class", back_populates="organization")
+
 class Teacher(Base):
     __tablename__ = "teachers"
     
@@ -12,12 +25,18 @@ class Teacher(Base):
     full_name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
-    role = Column(String, default="teacher")  # admin, teacher
+    role = Column(String, default="teacher")  # super_admin, admin, teacher
     status = Column(String, default="active")  # active, inactive
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
     classes = relationship("Class", back_populates="teacher")
+    organization = relationship("Organization", back_populates="teachers")
+
+    @property
+    def organization_name(self):
+        return self.organization.name if self.organization else None
 
 class Class(Base):
     __tablename__ = "classes"
@@ -26,11 +45,13 @@ class Class(Base):
     class_name = Column(String, nullable=False)
     class_code = Column(String, unique=True, index=True, nullable=False)
     teacher_id = Column(Integer, ForeignKey("teachers.id"), nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
     teacher = relationship("Teacher", back_populates="classes")
     students = relationship("Student", back_populates="class_obj")
+    organization = relationship("Organization", back_populates="classes")
 
 class Student(Base):
     __tablename__ = "students"

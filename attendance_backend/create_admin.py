@@ -1,5 +1,5 @@
 import sqlite3
-from passlib.hash import bcrypt
+import bcrypt
 
 # Connect to database
 conn = sqlite3.connect('attendance.db')
@@ -16,7 +16,7 @@ if existing_admin:
     print('\nYou can login with these credentials.')
 else:
     # Create admin user
-    password_hash = bcrypt.hash('admin123')
+    password_hash = bcrypt.hashpw('admin123'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     
     cursor.execute("""
         INSERT INTO teachers (teacher_id, full_name, email, password_hash, role, status)

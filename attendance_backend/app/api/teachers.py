@@ -36,6 +36,8 @@ async def get_current_user_profile(
             "email": teacher.email,
             "role": teacher.role,
             "status": getattr(teacher, 'status', 'active'),
+            "organization_id": teacher.organization_id,
+            "organization_name": teacher.organization.name if teacher.organization else None,
             "created_at": teacher.created_at.isoformat() if teacher.created_at else None
         }
     except HTTPException:
@@ -104,7 +106,16 @@ async def create_teacher(
 ):
     """Create a new teacher (Admin only)"""
     try:
-        teacher = await teacher_service.create_teacher(teacher_data, db)
+        current_teacher = crud.get_teacher_by_id(db, current_user["user_id"])
+        teacher_dict = teacher_data.model_dump()
+
+        if current_user["role"] != "super_admin":
+            # Org admins can only create teachers within their org and cannot create super admins
+            teacher_dict["organization_id"] = current_teacher.organization_id if current_teacher else None
+            if teacher_dict.get("role") == "super_admin":
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Super admin role not allowed")
+
+        teacher = await teacher_service.create_teacher(TeacherCreate(**teacher_dict), db)
         return TeacherResponse.model_validate(teacher)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -115,7 +126,12 @@ async def get_teachers(
     current_user: dict = Depends(require_admin)
 ):
     """Get all teachers (Admin only)"""
-    teachers = await teacher_service.get_teachers(db)
+    org_id = None
+    if current_user["role"] != "super_admin":
+        current_teacher = crud.get_teacher_by_id(db, current_user["user_id"])
+        org_id = current_teacher.organization_id if current_teacher else None
+
+    teachers = await teacher_service.get_teachers(db, org_id=org_id)
     return [TeacherResponse.model_validate(teacher) for teacher in teachers]
 
 @router.get("/{teacher_id}", response_model=TeacherResponse)
@@ -128,6 +144,10 @@ async def get_teacher(
     teacher = await teacher_service.get_teacher_by_id(teacher_id, db)
     if not teacher:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
+    if current_user["role"] != "super_admin":
+        current_teacher = crud.get_teacher_by_id(db, current_user["user_id"])
+        if current_teacher and teacher.organization_id != current_teacher.organization_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     return TeacherResponse.model_validate(teacher)
 
 @router.put("/{teacher_id}", response_model=TeacherResponse)
@@ -139,6 +159,17 @@ async def update_teacher(
 ):
     """Update teacher (Admin only)"""
     try:
+        if current_user["role"] != "super_admin":
+            current_teacher = crud.get_teacher_by_id(db, current_user["user_id"])
+            target = crud.get_teacher_by_id(db, teacher_id)
+            if not target:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
+            if current_teacher and target.organization_id != current_teacher.organization_id:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+            if teacher_data.get("role") == "super_admin":
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Super admin role not allowed")
+            teacher_data["organization_id"] = current_teacher.organization_id if current_teacher else None
+
         teacher = await teacher_service.update_teacher(teacher_id, teacher_data, db)
         if not teacher:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
@@ -154,6 +185,14 @@ async def delete_teacher(
 ):
     """Delete teacher (Admin only)"""
     try:
+        if current_user["role"] != "super_admin":
+            current_teacher = crud.get_teacher_by_id(db, current_user["user_id"])
+            target = crud.get_teacher_by_id(db, teacher_id)
+            if not target:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
+            if current_teacher and target.organization_id != current_teacher.organization_id:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
         success = await teacher_service.delete_teacher(teacher_id, db)
         if not success:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
@@ -173,6 +212,14 @@ async def bulk_delete_teachers(
         if not teacher_ids:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No teacher IDs provided")
         
+        if current_user["role"] != "super_admin":
+            current_teacher = crud.get_teacher_by_id(db, current_user["user_id"])
+            org_id = current_teacher.organization_id if current_teacher else None
+            teacher_ids = [
+                t_id for t_id in teacher_ids
+                if (crud.get_teacher_by_id(db, t_id) and crud.get_teacher_by_id(db, t_id).organization_id == org_id)
+            ]
+
         deleted_count = await teacher_service.bulk_delete_teachers(teacher_ids, db)
         return {
             "message": f"{deleted_count} teacher(s) deleted successfully",
@@ -192,7 +239,11 @@ async def export_teachers_csv(
     import csv
     from datetime import datetime
     
-    teachers = await teacher_service.get_teachers(db)
+    org_id = None
+    if current_user["role"] != "super_admin":
+        current_teacher = crud.get_teacher_by_id(db, current_user["user_id"])
+        org_id = current_teacher.organization_id if current_teacher else None
+    teachers = await teacher_service.get_teachers(db, org_id=org_id)
     
     # Create CSV in memory
     output = io.StringIO()

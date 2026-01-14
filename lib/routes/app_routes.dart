@@ -15,6 +15,7 @@ import '../screens/class_management_screen.dart';
 import '../screens/teacher_management_screen.dart';
 import '../screens/attendance_report_screen.dart';
 import '../screens/admin/admin_user_management_screen.dart';
+import '../screens/admin/admin_organization_management_screen.dart';
 import '../screens/scan_attendance_screen.dart';
 
 class AppRoutes {
@@ -33,6 +34,7 @@ class AppRoutes {
   static const String teacherManagement = '/teacher-management';
   static const String attendanceReport = '/attendance-report';
   static const String adminUserManagement = '/admin-user-management';
+  static const String adminOrgManagement = '/admin-org-management';
   static const String scanAttendance = '/scan-attendance';
 
   static Map<String, WidgetBuilder> get routes => {
@@ -51,6 +53,7 @@ class AppRoutes {
     teacherManagement: (context) => const TeacherManagementScreen(),
     attendanceReport: (context) => const AttendanceReportScreen(),
     adminUserManagement: (context) => const AdminUserManagementScreen(),
+    adminOrgManagement: (context) => const AdminOrganizationManagementScreen(),
     scanAttendance: (context) => const ScanAttendanceScreen(),
   };
 }

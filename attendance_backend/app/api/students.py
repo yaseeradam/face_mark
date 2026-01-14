@@ -54,9 +54,13 @@ async def get_students(
 ):
     """Get students, optionally filtered by class"""
     try:
-        # For admin, get all students
-        if current_user["role"] == "admin":
+        # For super admin, get all students
+        if current_user["role"] == "super_admin":
             all_students = await student_service.get_students(db, class_id=class_id)
+        elif current_user["role"] == "admin" and not class_id:
+            accessible_classes = await class_service.get_accessible_classes(current_user, db)
+            class_ids = [cls.id for cls in accessible_classes]
+            all_students = await student_service.get_students(db, class_ids=class_ids)
         elif class_id:
             # Check access for specific class
             has_access = await class_service.check_teacher_access(class_id, current_user["user_id"], db)

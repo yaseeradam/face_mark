@@ -18,13 +18,22 @@ class TeacherService:
         teacher_dict = teacher_data.model_dump()
         return crud.create_teacher(db, teacher_dict)
     
-    async def get_teachers(self, db: Session) -> List[models.Teacher]:
-        """Get all teachers"""
-        return crud.get_teachers(db)
+    async def get_teachers(self, db: Session, org_id: Optional[int] = None) -> List[models.Teacher]:
+        """Get all teachers, optionally filtered by organization"""
+        return crud.get_teachers(db, org_id=org_id)
     
-    async def authenticate_teacher(self, email: str, password: str, db: Session) -> Optional[models.Teacher]:
-        """Authenticate teacher login"""
-        return crud.authenticate_teacher(db, email, password)
+    async def authenticate_teacher(self, identifier: str, password: str, db: Session) -> Optional[models.Teacher]:
+        """Authenticate teacher login by email or teacher_id"""
+        teacher = crud.get_teacher_by_email(db, identifier)
+        if not teacher:
+            teacher = crud.get_teacher_by_teacher_id(db, identifier)
+        if not teacher:
+            return None
+        if getattr(teacher, "status", "active") != "active":
+            return None
+        if not crud.verify_password(password, teacher.password_hash):
+            return None
+        return teacher
     
     async def get_teacher_by_id(self, teacher_id: int, db: Session) -> Optional[models.Teacher]:
         """Get teacher by ID"""

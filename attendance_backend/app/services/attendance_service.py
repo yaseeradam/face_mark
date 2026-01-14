@@ -24,9 +24,9 @@ class AttendanceService:
         
         return crud.create_attendance(db, student_id, class_id, confidence_score)
     
-    async def get_attendance_today(self, db: Session, class_id: Optional[int] = None) -> List[models.Attendance]:
+    async def get_attendance_today(self, db: Session, class_id: Optional[int] = None, class_ids: Optional[List[int]] = None) -> List[models.Attendance]:
         """Get today's attendance records"""
-        return crud.get_attendance_today(db, class_id=class_id)
+        return crud.get_attendance_today(db, class_id=class_id, class_ids=class_ids)
     
     async def get_attendance_by_class(self, class_id: int, db: Session, date_filter: Optional[date] = None) -> List[models.Attendance]:
         """Get attendance records for a specific class"""
@@ -54,6 +54,6 @@ class AttendanceService:
             "date": date_filter
         }
     
-    async def get_attendance_by_date(self, db: Session, filter_date: date, class_id: Optional[int] = None) -> List[models.Attendance]:
+    async def get_attendance_by_date(self, db: Session, filter_date: date, class_id: Optional[int] = None, class_ids: Optional[List[int]] = None) -> List[models.Attendance]:
         """Get attendance records for a specific date"""
-        return crud.get_attendance_by_date(db, filter_date, class_id=class_id)
+        return crud.get_attendance_by_date(db, filter_date, class_id=class_id, class_ids=class_ids)

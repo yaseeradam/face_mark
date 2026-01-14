@@ -54,57 +54,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       }
     });
   }
-
-
   Future<void> _loadDashboardData() async {
     setState(() => _isLoading = true);
-    
+
     try {
-      // Debug: Check if authenticated
-      print('🔐 Is Authenticated: ${ApiService.isAuthenticated}');
-      
-      // Fetch students
-      final studentsResult = await ApiService.getStudents();
-      print('📊 Students Result: ${studentsResult['success']} - ${studentsResult['error'] ?? "OK"}');
-      if (studentsResult['success']) {
-        final students = studentsResult['data'] as List? ?? [];
-        _totalStudents = students.length;
-      } else {
-        print('❌ Students Error: ${studentsResult['error']}');
-      }
-      
-      // Fetch classes
-      final classesResult = await ApiService.getClasses();
-      print('📊 Classes Result: ${classesResult['success']} - ${classesResult['error'] ?? "OK"}');
-      if (classesResult['success']) {
-        final classes = classesResult['data'] as List? ?? [];
-        _totalClasses = classes.length;
-      } else {
-        print('❌ Classes Error: ${classesResult['error']}');
-      }
-      
-      // Fetch teachers
-      final teachersResult = await ApiService.getTeachers();
-      if (teachersResult['success']) {
-        final teachers = teachersResult['data'] as List? ?? [];
-        _totalTeachers = teachers.length;
-      }
-      
-      // Fetch today's attendance
-      final attendanceResult = await ApiService.getTodayAttendance();
-      if (attendanceResult['success']) {
-        final attendance = attendanceResult['data'] as List? ?? [];
-        _presentToday = attendance.length;
-        
-        // Calculate attendance rate
-        if (_totalStudents > 0) {
-          _attendanceRate = (_presentToday / _totalStudents) * 100;
-        }
+      final statsResult = await ApiService.getDashboardStats();
+      if (statsResult['success']) {
+        final data = statsResult['data'] as Map<String, dynamic>? ?? {};
+        _totalStudents = data['total_students'] ?? 0;
+        _totalClasses = data['total_classes'] ?? 0;
+        _totalTeachers = data['total_teachers'] ?? 0;
+        _presentToday = data['present_today'] ?? 0;
+        _attendanceRate = (data['attendance_rate'] ?? 0).toDouble();
       }
     } catch (e) {
       // Handle errors silently, show 0 values
     }
-    
+
     if (mounted) {
       setState(() => _isLoading = false);
     }
@@ -115,6 +81,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final user = ref.watch(authProvider).user ?? {};
+    final userName = (user['full_name'] ?? 'Admin').toString();
+    final userRole = (user['role'] ?? 'admin').toString();
+    final isSuperAdmin = userRole == 'super_admin';
 
     return SafeArea(
       bottom: false,
@@ -158,7 +128,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text("Welcome back,", style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500)),
-                        Text("Admin", style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                        Text(userName, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
@@ -272,6 +242,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TeacherManagementScreen()))),
                         _buildActionCard(context, "User Management", Icons.manage_accounts, Colors.indigo,
                           () => Navigator.pushNamed(context, '/admin-user-management')),
+                        if (isSuperAdmin)
+                          _buildActionCard(context, "Organizations", Icons.apartment, Colors.brown,
+                            () => Navigator.pushNamed(context, '/admin-org-management')),
                         _buildActionCard(context, "Reports", Icons.bar_chart, Colors.teal,
                           () => ref.read(navigationProvider.notifier).state = 3),
                         _buildActionCard(context, "Settings", Icons.settings, Colors.grey,

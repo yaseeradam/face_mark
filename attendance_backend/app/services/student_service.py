@@ -23,9 +23,9 @@ class StudentService:
         student_dict = student_data.model_dump()
         return crud.create_student(db, student_dict)
     
-    async def get_students(self, db: Session, class_id: Optional[int] = None) -> List[models.Student]:
+    async def get_students(self, db: Session, class_id: Optional[int] = None, class_ids: Optional[List[int]] = None) -> List[models.Student]:
         """Get all students, optionally filtered by class"""
-        return crud.get_students(db, class_id=class_id)
+        return crud.get_students(db, class_id=class_id, class_ids=class_ids)
     
     async def get_student_by_id(self, student_id: int, db: Session) -> Optional[models.Student]:
         """Get student by ID"""

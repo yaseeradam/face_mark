@@ -16,6 +16,7 @@ class Organization(Base):
     # Relationships
     teachers = relationship("Teacher", back_populates="organization")
     classes = relationship("Class", back_populates="organization")
+    attendance_settings = relationship("AttendanceSettings", back_populates="organization", uselist=False)
 
 class Teacher(Base):
     __tablename__ = "teachers"
@@ -89,7 +90,25 @@ class Attendance(Base):
     class_id = Column(Integer, ForeignKey("classes.id"), nullable=False)
     marked_at = Column(DateTime(timezone=True), server_default=func.now())
     confidence_score = Column(Float, nullable=True)
+    status = Column(String, default="present")
+    check_in_type = Column(String, default="morning")
     
     # Relationships
     student = relationship("Student", back_populates="attendance_records")
     class_obj = relationship("Class")
+
+class AttendanceSettings(Base):
+    __tablename__ = "attendance_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), unique=True, nullable=False)
+    school_start_time = Column(String, default="08:00")
+    late_cutoff_time = Column(String, default="08:15")
+    auto_absent_time = Column(String, default="09:00")
+    allow_late_arrivals = Column(Boolean, default=True)
+    require_absence_excuse = Column(Boolean, default=False)
+    multiple_checkins = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    organization = relationship("Organization", back_populates="attendance_settings")

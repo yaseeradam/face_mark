@@ -12,6 +12,7 @@ import 'class_management_screen.dart';
 import 'teacher_management_screen.dart';
 import '../services/api_service.dart';
 import '../providers/app_providers.dart';
+import '../theme/app_theme.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -20,14 +21,14 @@ class DashboardScreen extends ConsumerStatefulWidget {
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+class _DashboardScreenState extends ConsumerState<DashboardScreen> 
+    with SingleTickerProviderStateMixin {
   bool _isLoading = true;
   Timer? _refreshTimer;
+  late AnimationController _animationController;
   
-  // Auto-refresh interval (30 seconds)
   static const Duration _refreshInterval = Duration(seconds: 30);
   
-  // Real data from API
   int _totalStudents = 0;
   int _totalClasses = 0;
   int _presentToday = 0;
@@ -37,6 +38,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
     _loadDashboardData();
     _startAutoRefresh();
   }
@@ -44,6 +49,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _animationController.dispose();
     super.dispose();
   }
 
@@ -54,6 +60,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       }
     });
   }
+
   Future<void> _loadDashboardData() async {
     setState(() => _isLoading = true);
 
@@ -68,14 +75,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _attendanceRate = (data['attendance_rate'] ?? 0).toDouble();
       }
     } catch (e) {
-      // Handle errors silently, show 0 values
+      // Handle errors silently
     }
 
     if (mounted) {
       setState(() => _isLoading = false);
+      _animationController.forward(from: 0);
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -85,209 +92,286 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final userName = (user['full_name'] ?? 'Admin').toString();
     final userRole = (user['role'] ?? 'admin').toString();
     final isSuperAdmin = userRole == 'super_admin';
+    
+    // Get greeting based on time of day
+    final hour = DateTime.now().hour;
+    String greeting = 'Good morning';
+    String emoji = '☀️';
+    if (hour >= 12 && hour < 17) {
+      greeting = 'Good afternoon';
+      emoji = '🌤️';
+    } else if (hour >= 17) {
+      greeting = 'Good evening';
+      emoji = '🌙';
+    }
 
-    return SafeArea(
-      bottom: false,
-      child: Column(
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-            child: Row(
-              children: [
-                  Stack(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2), width: 2),
-                          color: theme.colorScheme.primary.withOpacity(0.1),
-                        ),
-                        child: Icon(Icons.person, color: theme.colorScheme.primary),
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // ═══════════════════════════════════════════════════════════════
+            // HEADER SECTION
+            // ═══════════════════════════════════════════════════════════════
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+              child: Row(
+                children: [
+                  // Avatar with gradient border
+                  Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: AppTheme.primaryGradient,
+                    ),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isDark ? AppTheme.surfaceDark : Colors.white,
                       ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: theme.scaffoldBackgroundColor, width: 2),
-                          ),
-                        ),
+                      child: Icon(
+                        Icons.person_rounded,
+                        color: theme.colorScheme.primary,
+                        size: 26,
                       ),
-                    ],
+                    ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("Welcome back,", style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500)),
-                        Text(userName, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                        Text(
+                          "$greeting $emoji",
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: isDark ? AppTheme.textSecondaryDark : AppTheme.textSecondaryLight,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          userName,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  IconButton.filledTonal(
-                    onPressed: _loadDashboardData,
-                    icon: _isLoading 
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.refresh),
-                    style: IconButton.styleFrom(
-                      backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
-                      foregroundColor: isDark ? Colors.grey[300] : Colors.grey[600],
-                    ),
+                  // Refresh button with soft styling
+                  _buildSoftIconButton(
+                    icon: _isLoading ? null : Icons.refresh_rounded,
+                    isLoading: _isLoading,
+                    onTap: _loadDashboardData,
+                    isDark: isDark,
                   ),
                 ],
               ),
             ),
-            // Scrollable Content
+
+            // ═══════════════════════════════════════════════════════════════
+            // SCROLLABLE CONTENT
+            // ═══════════════════════════════════════════════════════════════
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _loadDashboardData,
+                color: theme.colorScheme.primary,
                 child: ListView(
-                  padding: const EdgeInsets.only(bottom: 100),
+                  padding: const EdgeInsets.only(top: 16, bottom: 100),
                   children: [
-                    // Stats Section
+                    // ─────────────────────────────────────────────────────────
+                    // TODAY'S OVERVIEW CARD (Featured)
+                    // ─────────────────────────────────────────────────────────
+                    _buildFeaturedCard(context, isDark),
+                    
+                    const SizedBox(height: 24),
+                    
+                    // ─────────────────────────────────────────────────────────
+                    // STATS ROW
+                    // ─────────────────────────────────────────────────────────
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Text("Overview", style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(height: 16),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Row(
                         children: [
-                          _buildStatCard(
-                            context,
-                            icon: Icons.face,
-                            iconBg: Colors.white,
-                            iconColor: theme.colorScheme.primary,
-                            label: "Present Today",
-                            value: _isLoading ? "..." : "${_attendanceRate.toStringAsFixed(0)}%",
-                            trend: _presentToday > 0 ? "+$_presentToday" : null,
-                            bg: theme.colorScheme.primary,
-                            textColor: Colors.white,
+                          Expanded(
+                            child: _buildStatCard(
+                              context,
+                              icon: Icons.groups_rounded,
+                              label: "Students",
+                              value: _isLoading ? "..." : "$_totalStudents",
+                              color: AppTheme.info,
+                              isDark: isDark,
+                            ),
                           ),
-                          const SizedBox(width: 16),
-                          _buildStatCard(
-                            context,
-                            icon: Icons.groups,
-                            iconBg: Colors.blue[50] ?? Colors.blue.shade50,
-                            iconColor: theme.colorScheme.primary,
-                            label: "Total Students",
-                            value: _isLoading ? "..." : "$_totalStudents",
-                            bg: theme.cardColor,
-                            textColor: theme.colorScheme.onSurface,
-                            isOutlined: true,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildStatCard(
+                              context,
+                              icon: Icons.class_rounded,
+                              label: "Classes",
+                              value: _isLoading ? "..." : "$_totalClasses",
+                              color: AppTheme.accent,
+                              isDark: isDark,
+                            ),
                           ),
-                          const SizedBox(width: 16),
-                           _buildStatCard(
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildStatCard(
+                              context,
+                              icon: Icons.school_rounded,
+                              label: "Teachers",
+                              value: _isLoading ? "..." : "$_totalTeachers",
+                              color: AppTheme.warning,
+                              isDark: isDark,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 28),
+
+                    // ─────────────────────────────────────────────────────────
+                    // QUICK ACTIONS SECTION
+                    // ─────────────────────────────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text(
+                        "Quick Actions",
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Action Cards Grid
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: GridView.count(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        childAspectRatio: 1.15,
+                        children: [
+                          _buildActionCard(
                             context,
-                            icon: Icons.class_,
-                            iconBg: Colors.purple[50] ?? Colors.purple.shade50,
-                            iconColor: Colors.purple,
+                            icon: Icons.person_add_rounded,
+                            label: "Register Student",
+                            description: "Add new face",
+                            color: AppTheme.info,
+                            isDark: isDark,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const RegisterStudentScreenNew()),
+                            ),
+                          ),
+                          _buildActionCard(
+                            context,
+                            icon: Icons.face_retouching_natural,
+                            label: "Scan Face",
+                            description: "Mark attendance",
+                            color: AppTheme.success,
+                            isDark: isDark,
+                            onTap: () => ref.read(navigationProvider.notifier).state = 1,
+                          ),
+                          _buildActionCard(
+                            context,
+                            icon: Icons.class_rounded,
                             label: "Classes",
-                            value: _isLoading ? "..." : "$_totalClasses",
-                            bg: theme.cardColor,
-                            textColor: theme.colorScheme.onSurface,
-                            isOutlined: true,
+                            description: "Manage classes",
+                            color: AppTheme.accent,
+                            isDark: isDark,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const ClassManagementScreen()),
+                            ),
                           ),
-                          const SizedBox(width: 16),
-                           _buildStatCard(
+                          _buildActionCard(
                             context,
-                            icon: Icons.school,
-                            iconBg: Colors.orange[50] ?? Colors.orange.shade50,
-                            iconColor: Colors.orange,
+                            icon: Icons.school_rounded,
                             label: "Teachers",
-                            value: _isLoading ? "..." : "$_totalTeachers",
-                            bg: theme.cardColor,
-                            textColor: theme.colorScheme.onSurface,
-                            isOutlined: true,
+                            description: "Manage staff",
+                            color: AppTheme.warning,
+                            isDark: isDark,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const TeacherManagementScreen()),
+                            ),
+                          ),
+                          _buildActionCard(
+                            context,
+                            icon: Icons.manage_accounts_rounded,
+                            label: "Users",
+                            description: "User management",
+                            color: const Color(0xFF6366F1),
+                            isDark: isDark,
+                            onTap: () => Navigator.pushNamed(context, '/admin-user-management'),
+                          ),
+                          if (isSuperAdmin)
+                            _buildActionCard(
+                              context,
+                              icon: Icons.apartment_rounded,
+                              label: "Organizations",
+                              description: "Manage orgs",
+                              color: const Color(0xFF78716C),
+                              isDark: isDark,
+                              onTap: () => Navigator.pushNamed(context, '/admin-org-management'),
+                            ),
+                          _buildActionCard(
+                            context,
+                            icon: Icons.analytics_rounded,
+                            label: "Reports",
+                            description: "View analytics",
+                            color: const Color(0xFF14B8A6),
+                            isDark: isDark,
+                            onTap: () => ref.read(navigationProvider.notifier).state = 3,
+                          ),
+                          _buildActionCard(
+                            context,
+                            icon: Icons.settings_rounded,
+                            label: "Settings",
+                            description: "App settings",
+                            color: AppTheme.textSecondaryLight,
+                            isDark: isDark,
+                            onTap: () => ref.read(navigationProvider.notifier).state = 4,
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    // Quick Actions
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Quick Actions", style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                    GridView.count(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 16,
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      children: [
-                        _buildActionCard(context, "Register New", Icons.person_add, Colors.blue, 
-                          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterStudentScreenNew()))),
-                        _buildActionCard(context, "Scan Face", Icons.center_focus_strong, Colors.green,
-                          () => ref.read(navigationProvider.notifier).state = 1),
-                        _buildActionCard(context, "Classes", Icons.class_, Colors.purple,
-                          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClassManagementScreen()))),
-                        _buildActionCard(context, "Teachers", Icons.school, Colors.orange,
-                          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TeacherManagementScreen()))),
-                        _buildActionCard(context, "User Management", Icons.manage_accounts, Colors.indigo,
-                          () => Navigator.pushNamed(context, '/admin-user-management')),
-                        if (isSuperAdmin)
-                          _buildActionCard(context, "Organizations", Icons.apartment, Colors.brown,
-                            () => Navigator.pushNamed(context, '/admin-org-management')),
-                        _buildActionCard(context, "Reports", Icons.bar_chart, Colors.teal,
-                          () => ref.read(navigationProvider.notifier).state = 3),
-                        _buildActionCard(context, "Settings", Icons.settings, Colors.grey,
-                          () => ref.read(navigationProvider.notifier).state = 4),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    // Quick Info
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Text("Quick Info", style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildInfoItem(context, "Total Students", "$_totalStudents registered", Icons.people, Colors.blue),
-                    _buildInfoItem(context, "Total Classes", "$_totalClasses active classes", Icons.class_, Colors.purple),
-                    _buildInfoItem(context, "Total Teachers", "$_totalTeachers teachers", Icons.school, Colors.orange),
-                  ], // Close ListView children
-                ), // Close ListView
-              ), // Close RefreshIndicator
-            ), // Close Expanded
-          ], // Close Column children
-        ), // Close Column and SafeArea child
-      ); // Close SafeArea and return statement
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  Widget _buildStatCard(BuildContext context, {required IconData icon, required String label, required String value, String? trend, required Color bg, required Color textColor, required Color iconBg, required Color iconColor, bool isOutlined = false}) {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FEATURED CARD - Today's Overview with Gradient
+  // ═══════════════════════════════════════════════════════════════════════════
+  Widget _buildFeaturedCard(BuildContext context, bool isDark) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
+    
     return Container(
-      width: 160,
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(24),
-        border: isOutlined ? Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[200]!) : null,
-        boxShadow: !isOutlined ? [
+        borderRadius: BorderRadius.circular(AppTheme.radiusXL),
+        gradient: AppTheme.primaryGradient,
+        boxShadow: [
           BoxShadow(
-            color: bg.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
-        ] : null,
+            color: AppTheme.primary.withOpacity(0.3),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+            spreadRadius: -4,
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -295,97 +379,153 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: isOutlined ? iconBg.withOpacity(isDark ? 0.1 : 1) : Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: isOutlined ? iconColor : Colors.white),
-              ),
-              if (trend != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(99),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Today's Attendance",
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: Colors.white.withOpacity(0.85),
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                  child: Text(trend, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        _isLoading ? "..." : "${_attendanceRate.toStringAsFixed(0)}%",
+                        style: theme.textTheme.displayLarge?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 48,
+                          height: 1,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (!_isLoading && _presentToday > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.arrow_upward_rounded, size: 14, color: Colors.white),
+                              const SizedBox(width: 2),
+                              Text(
+                                "$_presentToday present",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusLG),
                 ),
+                child: const Icon(
+                  Icons.face_retouching_natural,
+                  color: Colors.white,
+                  size: 36,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 16),
-          Text(label, style: TextStyle(color: textColor.withOpacity(0.8), fontSize: 14, fontWeight: FontWeight.w500)),
-          const SizedBox(height: 4),
-          Text(value, style: TextStyle(color: textColor, fontSize: 24, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 20),
+          // Progress bar
+          Container(
+            height: 8,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: _isLoading ? 0 : (_attendanceRate / 100).clamp(0, 1),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _isLoading 
+              ? "Loading..." 
+              : "$_presentToday of $_totalStudents students present today",
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.8),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildActionCard(BuildContext context, String label, IconData icon, MaterialColor color, VoidCallback onTap) {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STAT CARD - Compact stat display
+  // ═══════════════════════════════════════════════════════════════════════════
+  Widget _buildStatCard(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+    required bool isDark,
+  }) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[200]!),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: color, size: 32),
-            ),
-            const SizedBox(height: 12),
-            Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoItem(BuildContext context, String title, String subtitle, IconData icon, Color color) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[200]!),
+        color: isDark ? AppTheme.surfaceDark : Colors.white,
+        borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+        border: Border.all(
+          color: isDark ? AppTheme.borderDark.withOpacity(0.3) : AppTheme.borderLight,
+        ),
+        boxShadow: isDark ? null : AppTheme.softShadowLight,
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              shape: BoxShape.circle,
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(AppTheme.radiusSM),
             ),
-            child: Icon(icon, color: color, size: 20),
+            child: Icon(icon, color: color, size: 22),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                Text(subtitle, style: TextStyle(color: isDark ? Colors.grey[500] : Colors.grey[500], fontSize: 12)),
-              ],
+          const SizedBox(height: 14),
+          Text(
+            value,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: 22,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: isDark ? AppTheme.textSecondaryDark : AppTheme.textSecondaryLight,
             ),
           ),
         ],
@@ -393,5 +533,108 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ACTION CARD - Quick action button
+  // ═══════════════════════════════════════════════════════════════════════════
+  Widget _buildActionCard(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String description,
+    required Color color,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.surfaceDark : Colors.white,
+            borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+            border: Border.all(
+              color: isDark ? AppTheme.borderDark.withOpacity(0.3) : AppTheme.borderLight,
+            ),
+            boxShadow: isDark ? null : AppTheme.softShadowLight,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+                ),
+                child: Icon(icon, color: color, size: 26),
+              ),
+              const Spacer(),
+              Text(
+                label,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                description,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: isDark ? AppTheme.textTertiaryDark : AppTheme.textTertiaryLight,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SOFT ICON BUTTON - Utility button with soft styling
+  // ═══════════════════════════════════════════════════════════════════════════
+  Widget _buildSoftIconButton({
+    IconData? icon,
+    bool isLoading = false,
+    required VoidCallback onTap,
+    required bool isDark,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: isLoading ? null : onTap,
+        borderRadius: BorderRadius.circular(AppTheme.radiusSM),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: isDark 
+              ? AppTheme.surfaceSecondaryDark 
+              : AppTheme.surfaceSecondaryLight,
+            borderRadius: BorderRadius.circular(AppTheme.radiusSM),
+          ),
+          child: Center(
+            child: isLoading
+              ? SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: isDark ? AppTheme.textSecondaryDark : AppTheme.textSecondaryLight,
+                  ),
+                )
+              : Icon(
+                  icon,
+                  size: 22,
+                  color: isDark ? AppTheme.textSecondaryDark : AppTheme.textSecondaryLight,
+                ),
+          ),
+        ),
+      ),
+    );
+  }
 }

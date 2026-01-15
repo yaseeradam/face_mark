@@ -9,6 +9,8 @@ class AttendanceResponse(BaseModel):
     class_id: int
     marked_at: datetime
     confidence_score: Optional[float]
+    status: Optional[str] = None
+    check_in_type: Optional[str] = None
     student: Optional[dict] = None  # Will be populated with student info
     
     class Config:

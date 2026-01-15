@@ -139,7 +139,7 @@ class _RegisterStudentScreenNewState extends State<RegisterStudentScreenNew>
         selectedCamera,
         ResolutionPreset.medium, // Medium for better performance
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.nv21, // NV21 required for image stream on Android
+        imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
       );
 
       await _cameraController!.initialize();

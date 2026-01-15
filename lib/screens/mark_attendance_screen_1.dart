@@ -148,7 +148,7 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
         frontCamera,
         ResolutionPreset.medium, // Use medium for faster processing
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.nv21, // Better for ML Kit on Android
+        imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
       );
 
       await _cameraController!.initialize();

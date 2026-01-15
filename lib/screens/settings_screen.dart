@@ -4,6 +4,7 @@ import '../providers/theme_provider.dart';
 import '../providers/app_providers.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
+import '../theme/app_theme.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
@@ -15,15 +16,29 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  static const String _schoolStartTimeKey = 'settings_school_start_time';
+  static const String _lateCutoffTimeKey = 'settings_late_cutoff_time';
+  static const String _autoAbsentTimeKey = 'settings_auto_absent_time';
+  static const String _allowLateArrivalsKey = 'settings_allow_late_arrivals';
+  static const String _requireAbsenceExcuseKey = 'settings_require_absence_excuse';
+  static const String _multipleCheckinsKey = 'settings_multiple_checkins';
+
   bool _offlineMode = false;
   bool _faceIdEnabled = false;
   bool _isLoading = true;
   Map<String, dynamic>? _currentUser;
+  TimeOfDay _schoolStartTime = const TimeOfDay(hour: 8, minute: 0);
+  TimeOfDay _lateCutoffTime = const TimeOfDay(hour: 8, minute: 15);
+  TimeOfDay _autoAbsentTime = const TimeOfDay(hour: 9, minute: 0);
+  bool _allowLateArrivals = true;
+  bool _requireAbsenceExcuse = false;
+  bool _multipleCheckinsEnabled = false;
 
   @override
   void initState() {
     super.initState();
     _loadUserProfile();
+    _loadAttendanceSettings();
   }
 
   Future<void> _loadUserProfile() async {
@@ -40,6 +55,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  void _loadAttendanceSettings() {
+    final storedSchoolStart = StorageService.getString(_schoolStartTimeKey);
+    final storedLateCutoff = StorageService.getString(_lateCutoffTimeKey);
+    final storedAutoAbsent = StorageService.getString(_autoAbsentTimeKey);
+
+    setState(() {
+      _schoolStartTime = _timeFromStorage(storedSchoolStart, _schoolStartTime);
+      _lateCutoffTime = _timeFromStorage(storedLateCutoff, _lateCutoffTime);
+      _autoAbsentTime = _timeFromStorage(storedAutoAbsent, _autoAbsentTime);
+      _allowLateArrivals = StorageService.getBool(_allowLateArrivalsKey, defaultValue: _allowLateArrivals);
+      _requireAbsenceExcuse = StorageService.getBool(_requireAbsenceExcuseKey, defaultValue: _requireAbsenceExcuse);
+      _multipleCheckinsEnabled = StorageService.getBool(_multipleCheckinsKey, defaultValue: _multipleCheckinsEnabled);
+    });
+  }
+
+  TimeOfDay _timeFromStorage(String? value, TimeOfDay fallback) {
+    if (value == null || value.isEmpty) return fallback;
+    final parts = value.split(':');
+    if (parts.length != 2) return fallback;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return fallback;
+    return TimeOfDay(hour: hour, minute: minute);
+  }
+
+  String _timeToStorage(TimeOfDay time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  String _formatTime(BuildContext context, TimeOfDay time) {
+    return MaterialLocalizations.of(context).formatTimeOfDay(time);
+  }
+
+  Future<void> _pickTime({
+    required BuildContext context,
+    required String storageKey,
+    required TimeOfDay currentTime,
+    required ValueChanged<TimeOfDay> onPicked,
+  }) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: currentTime,
+    );
+    if (picked == null) return;
+    onPicked(picked);
+    await StorageService.saveString(storageKey, _timeToStorage(picked));
+  }
+
   Future<void> _setupFaceId() async {
     final picker = ImagePicker();
     final XFile? photo = await picker.pickImage(
@@ -54,11 +119,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       setState(() => _isLoading = false);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['success'] ? 'Face ID setup successful!' : result['error'] ?? 'Failed to setup Face ID'),
-            backgroundColor: result['success'] ? Colors.green : Colors.red,
-          ),
+        _showSnackBar(
+          result['success'] ? 'Face ID setup successful!' : result['error'] ?? 'Failed to setup Face ID',
+          isError: !result['success'],
         );
         if (result['success']) {
           setState(() => _faceIdEnabled = true);
@@ -71,57 +134,107 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final oldPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
-    final result = await showDialog<bool>(
+    final result = await showModalBottomSheet<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Change Password'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: oldPasswordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Current Password',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: newPasswordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'New Password',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: confirmPasswordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Confirm New Password',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () async {
-              if (newPasswordController.text != confirmPasswordController.text) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Passwords do not match'), backgroundColor: Colors.red),
-                );
-                return;
-              }
-              Navigator.pop(context, true);
-            },
-            child: const Text('Change'),
+        decoration: BoxDecoration(
+          color: isDark ? AppTheme.surfaceDark : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Change Password',
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              _buildTextField(
+                controller: oldPasswordController,
+                label: 'Current Password',
+                icon: Icons.lock_outline,
+                obscure: true,
+                isDark: isDark,
+              ),
+              const SizedBox(height: 16),
+              _buildTextField(
+                controller: newPasswordController,
+                label: 'New Password',
+                icon: Icons.lock_rounded,
+                obscure: true,
+                isDark: isDark,
+              ),
+              const SizedBox(height: 16),
+              _buildTextField(
+                controller: confirmPasswordController,
+                label: 'Confirm New Password',
+                icon: Icons.lock_rounded,
+                obscure: true,
+                isDark: isDark,
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        if (newPasswordController.text != confirmPasswordController.text) {
+                          _showSnackBar('Passwords do not match', isError: true);
+                          return;
+                        }
+                        Navigator.pop(context, true);
+                      },
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Change'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
           ),
-        ],
+        ),
       ),
     );
 
@@ -131,43 +244,90 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         newPasswordController.text,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(apiResult['success'] ? 'Password changed successfully!' : apiResult['error'] ?? 'Failed to change password'),
-            backgroundColor: apiResult['success'] ? Colors.green : Colors.red,
-          ),
+        _showSnackBar(
+          apiResult['success'] ? 'Password changed successfully!' : apiResult['error'] ?? 'Failed to change password',
+          isError: !apiResult['success'],
         );
       }
     }
   }
 
   Future<void> _syncData() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Syncing data...'), duration: Duration(seconds: 1)),
-    );
-    // Reload all data
+    _showSnackBar('Syncing data...');
     await Future.delayed(const Duration(seconds: 2));
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Data synced successfully!'), backgroundColor: Colors.green),
-      );
+      _showSnackBar('Data synced successfully!');
     }
   }
 
   Future<void> _logout() async {
-    final confirmed = await showDialog<bool>(
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Logout'),
-          ),
-        ],
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? AppTheme.surfaceDark : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.error.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.logout_rounded, color: AppTheme.error, size: 32),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Log Out',
+              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Are you sure you want to log out?',
+              style: theme.textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.error,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('Log Out'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
 
@@ -181,205 +341,349 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  void _showSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? AppTheme.error : AppTheme.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final themeMode = ref.watch(themeModeProvider);
 
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text("Settings"),
-          centerTitle: true,
-          automaticallyImplyLeading: false,
+        body: Center(
+          child: CircularProgressIndicator(color: theme.colorScheme.primary),
         ),
-        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Settings"),
-        centerTitle: true,
-        automaticallyImplyLeading: false,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Profile Card
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)],
-            ),
-            child: Column(
-              children: [
-                CircleAvatar(
-                  radius: 48,
-                  backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
-                  child: Text(
-                    (_currentUser?['full_name'] ?? 'U')[0].toUpperCase(),
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+      body: SafeArea(
+        bottom: false,
+        child: CustomScrollView(
+          slivers: [
+            // ═══════════════════════════════════════════════════════════════
+            // HEADER
+            // ═══════════════════════════════════════════════════════════════
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  'Settings',
+                  style: theme.textTheme.displaySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text(_currentUser?['full_name'] ?? 'User', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-                Text(
-                  _currentUser?['role'] == 'super_admin'
-                      ? 'Super Admin'
-                      : _currentUser?['role'] == 'admin'
-                          ? 'Administrator'
-                          : 'Teacher',
-                  style: theme.textTheme.bodyMedium,
+              ),
+            ),
+
+            // ═══════════════════════════════════════════════════════════════
+            // PROFILE CARD
+            // ═══════════════════════════════════════════════════════════════
+            SliverToBoxAdapter(
+              child: _buildProfileCard(context, isDark),
+            ),
+
+            // ═══════════════════════════════════════════════════════════════
+            // SETTINGS SECTIONS
+            // ═══════════════════════════════════════════════════════════════
+            SliverPadding(
+              padding: const EdgeInsets.all(20),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  // Connectivity Section
+                  _buildSectionHeader('Connectivity'),
+                  const SizedBox(height: 12),
+                  _buildSettingsCard(
+                    isDark: isDark,
+                    children: [
+                      _buildSwitchTile(
+                        icon: Icons.wifi_off_rounded,
+                        iconColor: AppTheme.info,
+                        title: 'Offline Mode',
+                        subtitle: 'Use without internet',
+                        value: _offlineMode,
+                        onChanged: (v) => setState(() => _offlineMode = v),
+                        isDark: isDark,
+                      ),
+                      _buildDivider(isDark),
+                      _buildActionTile(
+                        icon: Icons.sync_rounded,
+                        iconColor: AppTheme.success,
+                        title: 'Sync Data',
+                        subtitle: 'Sync with server',
+                        onTap: _syncData,
+                        isDark: isDark,
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  // Attendance Rules Section
+                  _buildSectionHeader('Attendance Rules'),
+                  const SizedBox(height: 12),
+                  _buildSettingsCard(
+                    isDark: isDark,
+                    children: [
+                      _buildTimeTile(
+                        icon: Icons.access_time_rounded,
+                        iconColor: AppTheme.primary,
+                        title: 'School Start Time',
+                        time: _formatTime(context, _schoolStartTime),
+                        onTap: () => _pickTime(
+                          context: context,
+                          storageKey: _schoolStartTimeKey,
+                          currentTime: _schoolStartTime,
+                          onPicked: (time) => setState(() => _schoolStartTime = time),
+                        ),
+                        isDark: isDark,
+                      ),
+                      _buildDivider(isDark),
+                      _buildTimeTile(
+                        icon: Icons.schedule_rounded,
+                        iconColor: AppTheme.warning,
+                        title: 'Late Cutoff Time',
+                        time: _formatTime(context, _lateCutoffTime),
+                        onTap: () => _pickTime(
+                          context: context,
+                          storageKey: _lateCutoffTimeKey,
+                          currentTime: _lateCutoffTime,
+                          onPicked: (time) => setState(() => _lateCutoffTime = time),
+                        ),
+                        isDark: isDark,
+                      ),
+                      _buildDivider(isDark),
+                      _buildTimeTile(
+                        icon: Icons.timer_off_rounded,
+                        iconColor: AppTheme.error,
+                        title: 'Auto-Mark Absent',
+                        time: _formatTime(context, _autoAbsentTime),
+                        onTap: () => _pickTime(
+                          context: context,
+                          storageKey: _autoAbsentTimeKey,
+                          currentTime: _autoAbsentTime,
+                          onPicked: (time) => setState(() => _autoAbsentTime = time),
+                        ),
+                        isDark: isDark,
+                      ),
+                      _buildDivider(isDark),
+                      _buildSwitchTile(
+                        icon: Icons.timelapse_rounded,
+                        iconColor: AppTheme.warning,
+                        title: 'Allow Late Arrivals',
+                        subtitle: 'Mark students late instead of absent',
+                        value: _allowLateArrivals,
+                        onChanged: (v) async {
+                          setState(() => _allowLateArrivals = v);
+                          await StorageService.saveBool(_allowLateArrivalsKey, v);
+                        },
+                        isDark: isDark,
+                      ),
+                      _buildDivider(isDark),
+                      _buildSwitchTile(
+                        icon: Icons.note_alt_rounded,
+                        iconColor: const Color(0xFF14B8A6),
+                        title: 'Require Excuse',
+                        subtitle: 'Require reason for absences',
+                        value: _requireAbsenceExcuse,
+                        onChanged: (v) async {
+                          setState(() => _requireAbsenceExcuse = v);
+                          await StorageService.saveBool(_requireAbsenceExcuseKey, v);
+                        },
+                        isDark: isDark,
+                      ),
+                      _buildDivider(isDark),
+                      _buildSwitchTile(
+                        icon: Icons.repeat_rounded,
+                        iconColor: AppTheme.accent,
+                        title: 'Multiple Check-ins',
+                        subtitle: 'Enable check-in/check-out',
+                        value: _multipleCheckinsEnabled,
+                        onChanged: (v) async {
+                          setState(() => _multipleCheckinsEnabled = v);
+                          await StorageService.saveBool(_multipleCheckinsKey, v);
+                        },
+                        isDark: isDark,
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  // Appearance Section
+                  _buildSectionHeader('Appearance'),
+                  const SizedBox(height: 12),
+                  _buildSettingsCard(
+                    isDark: isDark,
+                    children: [
+                      _buildSwitchTile(
+                        icon: Icons.dark_mode_rounded,
+                        iconColor: AppTheme.accent,
+                        title: 'Dark Mode',
+                        subtitle: 'Switch to dark theme',
+                        value: isDark,
+                        onChanged: (v) {
+                          ref.read(themeModeProvider.notifier).state = v ? ThemeMode.dark : ThemeMode.light;
+                        },
+                        isDark: isDark,
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  // Security Section
+                  _buildSectionHeader('Security'),
+                  const SizedBox(height: 12),
+                  _buildSettingsCard(
+                    isDark: isDark,
+                    children: [
+                      _buildActionTile(
+                        icon: Icons.lock_reset_rounded,
+                        iconColor: AppTheme.warning,
+                        title: 'Change Password',
+                        subtitle: 'Update your password',
+                        onTap: _changePassword,
+                        isDark: isDark,
+                      ),
+                      _buildDivider(isDark),
+                      _buildFaceIdTile(isDark),
+                    ],
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  // Logout Button
+                  _buildLogoutButton(isDark),
+
+                  const SizedBox(height: 24),
+
+                  // Version Info
+                  Center(
+                    child: Text(
+                      'Face Attendance v2.5.0',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: isDark ? AppTheme.textTertiaryDark : AppTheme.textTertiaryLight,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 100),
+                ]),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WIDGET BUILDERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildProfileCard(BuildContext context, bool isDark) {
+    final theme = Theme.of(context);
+    final userName = _currentUser?['full_name'] ?? 'User';
+    final userRole = _currentUser?['role'] ?? 'admin';
+    final userEmail = _currentUser?['email'] ?? '';
+    
+    String roleDisplay = 'Teacher';
+    if (userRole == 'super_admin') roleDisplay = 'Super Admin';
+    else if (userRole == 'admin') roleDisplay = 'Administrator';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: AppTheme.primaryGradient,
+        borderRadius: BorderRadius.circular(AppTheme.radiusXL),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primary.withOpacity(0.3),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+            spreadRadius: -4,
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Center(
+              child: Text(
+                userName[0].toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
                 ),
-                Text(_currentUser?['email'] ?? '', style: theme.textTheme.bodySmall),
-                if ((_currentUser?['organization_name'] ?? '').toString().isNotEmpty)
-                  Text(_currentUser?['organization_name'] ?? '', style: theme.textTheme.bodySmall),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  userName,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  userEmail,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.white.withOpacity(0.8),
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
+                    color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.circle, color: Colors.green, size: 8),
-                      SizedBox(width: 8),
-                      Text("Active", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
-                    ],
+                  child: Text(
+                    roleDisplay,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
-          
-          // Connectivity
-          _buildSectionHeader("Connectivity & Data"),
           Container(
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(16),
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Column(
-              children: [
-                SwitchListTile(
-                  value: _offlineMode,
-                  onChanged: (v) => setState(() => _offlineMode = v),
-                  title: const Text("Offline Mode", style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text("Use face recognition without internet"),
-                  secondary: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                    child: Icon(Icons.wifi_off, color: theme.colorScheme.primary),
-                  ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.blue[100], borderRadius: BorderRadius.circular(12)),
-                    child: const Icon(Icons.sync, color: Colors.blue),
-                  ),
-                  title: const Text("Sync Data", style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text("Sync with server"),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _syncData,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Appearance
-          _buildSectionHeader("Appearance"),
-          Container(
-            decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                SwitchListTile(
-                  value: isDark,
-                  onChanged: (v) {
-                    ref.read(themeModeProvider.notifier).state = v ? ThemeMode.dark : ThemeMode.light;
-                  },
-                  title: const Text("Dark Mode", style: TextStyle(fontWeight: FontWeight.w600)),
-                  secondary: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.purple[100], borderRadius: BorderRadius.circular(12)),
-                    child: const Icon(Icons.dark_mode, color: Colors.purple),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          
-          // Security
-          _buildSectionHeader("Security"),
-          Container(
-            decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.orange[100], borderRadius: BorderRadius.circular(12)),
-                    child: const Icon(Icons.lock_reset, color: Colors.orange),
-                  ),
-                  title: const Text("Change Password", style: TextStyle(fontWeight: FontWeight.w600)),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _changePassword,
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.purple[100], borderRadius: BorderRadius.circular(12)),
-                    child: const Icon(Icons.face, color: Colors.purple),
-                  ),
-                  title: const Text("Face ID Login", style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text(_faceIdEnabled ? 'Enabled' : 'Setup Face ID for quick login'),
-                  trailing: _faceIdEnabled 
-                      ? const Icon(Icons.check_circle, color: Colors.green)
-                      : FilledButton(
-                          onPressed: _setupFaceId,
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          ),
-                          child: const Text('Setup'),
-                        ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 32),
-          
-          // Logout
-          ListTile(
-            onTap: _logout,
-            tileColor: theme.cardColor,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            leading: const Icon(Icons.logout, color: Colors.red),
-            title: const Center(child: Text("Log Out", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
-          ),
-          const SizedBox(height: 24),
-          const Center(
-            child: Text(
-              "FACE MARK v2.4.1\nBuild 20231024",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 12),
-            ),
+            child: const Icon(Icons.verified_rounded, color: Colors.white, size: 20),
           ),
         ],
       ),
@@ -387,11 +691,324 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildSectionHeader(String title) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: isDark ? AppTheme.textSecondaryDark : AppTheme.textSecondaryLight,
+        letterSpacing: 0.5,
+      ),
+    );
+  }
+
+  Widget _buildSettingsCard({
+    required bool isDark,
+    required List<Widget> children,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.surfaceDark : Colors.white,
+        borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+        border: Border.all(
+          color: isDark ? AppTheme.borderDark.withOpacity(0.3) : AppTheme.borderLight,
+        ),
+        boxShadow: isDark ? null : AppTheme.softShadowLight,
+      ),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _buildDivider(bool isDark) {
+    return Divider(
+      height: 1,
+      thickness: 1,
+      color: isDark ? AppTheme.borderDark.withOpacity(0.3) : AppTheme.borderLight,
+    );
+  }
+
+  Widget _buildSwitchTile({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    required bool isDark,
+  }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      child: Text(
-        title.toUpperCase(),
-        style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: iconColor, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? AppTheme.textPrimaryDark : AppTheme.textPrimaryLight,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? AppTheme.textTertiaryDark : AppTheme.textTertiaryLight,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeColor: AppTheme.primary,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionTile({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    required bool isDark,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: iconColor, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? AppTheme.textPrimaryDark : AppTheme.textPrimaryLight,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? AppTheme.textTertiaryDark : AppTheme.textTertiaryLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: isDark ? AppTheme.textTertiaryDark : AppTheme.textTertiaryLight,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimeTile({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String time,
+    required VoidCallback onTap,
+    required bool isDark,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: iconColor, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? AppTheme.textPrimaryDark : AppTheme.textPrimaryLight,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isDark ? AppTheme.surfaceSecondaryDark : AppTheme.surfaceSecondaryLight,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  time,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFaceIdTile(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.accent.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(Icons.face_rounded, color: AppTheme.accent, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Face ID Login',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? AppTheme.textPrimaryDark : AppTheme.textPrimaryLight,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _faceIdEnabled ? 'Enabled' : 'Setup for quick login',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? AppTheme.textTertiaryDark : AppTheme.textTertiaryLight,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _faceIdEnabled
+            ? Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 24)
+            : FilledButton(
+                onPressed: _setupFaceId,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('Setup'),
+              ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLogoutButton(bool isDark) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _logout,
+        borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: AppTheme.error.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+            border: Border.all(color: AppTheme.error.withOpacity(0.3)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.logout_rounded, color: AppTheme.error, size: 22),
+              const SizedBox(width: 10),
+              Text(
+                'Log Out',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.error,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required bool isDark,
+    bool obscure = false,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+        filled: true,
+        fillColor: isDark ? AppTheme.surfaceSecondaryDark : AppTheme.surfaceSecondaryLight,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppTheme.primary, width: 2),
+        ),
       ),
     );
   }

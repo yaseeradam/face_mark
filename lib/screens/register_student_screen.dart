@@ -106,7 +106,7 @@ class _RegisterStudentScreenState extends State<RegisterStudentScreen>
         frontCamera,
         ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.nv21,
+        imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
       );
 
       await _cameraController!.initialize();

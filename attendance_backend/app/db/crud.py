@@ -228,11 +228,20 @@ def get_all_face_embeddings(db: Session) -> List[models.FaceEmbedding]:
 
 
 # Attendance CRUD
-def create_attendance(db: Session, student_id: int, class_id: int, confidence_score: float = None) -> models.Attendance:
+def create_attendance(
+    db: Session,
+    student_id: int,
+    class_id: int,
+    confidence_score: float = None,
+    status: str = "present",
+    check_in_type: str = "morning"
+) -> models.Attendance:
     db_attendance = models.Attendance(
         student_id=student_id,
         class_id=class_id,
-        confidence_score=confidence_score
+        confidence_score=confidence_score,
+        status=status,
+        check_in_type=check_in_type
     )
     db.add(db_attendance)
     db.commit()
@@ -256,7 +265,13 @@ def get_attendance_by_class(db: Session, class_id: int, date_filter: Optional[da
         query = query.filter(func.date(models.Attendance.marked_at) == date_filter)
     return query.all()
 
-def check_attendance_exists(db: Session, student_id: int, class_id: int, check_date: date = None) -> bool:
+def check_attendance_exists(
+    db: Session,
+    student_id: int,
+    class_id: int,
+    check_date: date = None,
+    check_in_type: Optional[str] = None
+) -> bool:
     if not check_date:
         check_date = date.today()
     
@@ -265,14 +280,76 @@ def check_attendance_exists(db: Session, student_id: int, class_id: int, check_d
     start_of_day = datetime.combine(check_date, datetime.min.time())
     end_of_day = datetime.combine(check_date, datetime.max.time())
     
-    return db.query(models.Attendance).filter(
+    query = db.query(models.Attendance).filter(
         and_(
             models.Attendance.student_id == student_id,
             models.Attendance.class_id == class_id,
             models.Attendance.marked_at >= start_of_day,
             models.Attendance.marked_at <= end_of_day
         )
-    ).first() is not None
+    )
+    if check_in_type:
+        query = query.filter(models.Attendance.check_in_type == check_in_type)
+    return query.first() is not None
+
+def get_attendance_record_for_date(
+    db: Session,
+    student_id: int,
+    class_id: int,
+    check_date: date = None,
+    check_in_type: Optional[str] = None
+) -> Optional[models.Attendance]:
+    if not check_date:
+        check_date = date.today()
+    
+    from datetime import datetime
+    start_of_day = datetime.combine(check_date, datetime.min.time())
+    end_of_day = datetime.combine(check_date, datetime.max.time())
+
+    query = db.query(models.Attendance).filter(
+        and_(
+            models.Attendance.student_id == student_id,
+            models.Attendance.class_id == class_id,
+            models.Attendance.marked_at >= start_of_day,
+            models.Attendance.marked_at <= end_of_day
+        )
+    )
+    if check_in_type:
+        query = query.filter(models.Attendance.check_in_type == check_in_type)
+    return query.first()
+
+def update_attendance(db: Session, attendance_id: int, update_data: dict) -> Optional[models.Attendance]:
+    attendance = db.query(models.Attendance).filter(models.Attendance.id == attendance_id).first()
+    if attendance:
+        for key, value in update_data.items():
+            if hasattr(attendance, key):
+                setattr(attendance, key, value)
+        db.commit()
+        db.refresh(attendance)
+    return attendance
+
+# Attendance Settings CRUD
+def get_attendance_settings_by_org_id(db: Session, org_id: int) -> Optional[models.AttendanceSettings]:
+    return db.query(models.AttendanceSettings).filter(models.AttendanceSettings.organization_id == org_id).first()
+
+def upsert_attendance_settings(db: Session, org_id: int, update_data: dict) -> models.AttendanceSettings:
+    settings = get_attendance_settings_by_org_id(db, org_id)
+    if settings:
+        for key, value in update_data.items():
+            if hasattr(settings, key):
+                setattr(settings, key, value)
+        db.commit()
+        db.refresh(settings)
+        return settings
+
+    settings = models.AttendanceSettings(
+        organization_id=org_id,
+        **update_data
+    )
+    db.add(settings)
+    db.commit()
+    db.refresh(settings)
+    return settings
 
 def get_attendance_by_date(db: Session, filter_date: date, class_id: Optional[int] = None, class_ids: Optional[List[int]] = None) -> List[models.Attendance]:
     """Get attendance records for a specific date"""

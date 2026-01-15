@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import '../services/camera_service.dart';
 import '../services/face_detection_service.dart';
 import '../services/api_service.dart';
+import '../services/storage_service.dart';
 import '../widgets/common_widgets.dart';
 
 class MarkAttendanceScreen1 extends ConsumerStatefulWidget {
@@ -21,6 +22,8 @@ class _MarkAttendanceScreen1State extends ConsumerState<MarkAttendanceScreen1> w
   bool _isProcessing = false;
   String _statusMessage = "Position face in frame";
   Map<String, dynamic>? _recognizedStudent;
+  bool _multipleCheckinsEnabled = false;
+  String _checkInType = 'morning';
 
   @override
   void initState() {
@@ -30,6 +33,12 @@ class _MarkAttendanceScreen1State extends ConsumerState<MarkAttendanceScreen1> w
       vsync: this,
     )..repeat();
     _initializeCamera();
+    _loadCheckinSettings();
+  }
+
+  void _loadCheckinSettings() {
+    final enabled = StorageService.getBool('settings_multiple_checkins', defaultValue: false);
+    setState(() => _multipleCheckinsEnabled = enabled);
   }
 
   Future<void> _initializeCamera() async {
@@ -105,6 +114,7 @@ class _MarkAttendanceScreen1State extends ConsumerState<MarkAttendanceScreen1> w
         'class_id': widget.classId,
         'timestamp': DateTime.now().toIso8601String(),
         'status': 'present',
+        'check_in_type': _checkInType,
       });
       
       if (result['success']) {
@@ -333,6 +343,36 @@ class _MarkAttendanceScreen1State extends ConsumerState<MarkAttendanceScreen1> w
                           ],
                         ),
                         const SizedBox(height: 24),
+
+                        if (_multipleCheckinsEnabled)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: ChoiceChip(
+                                    label: const Text("Morning"),
+                                    selected: _checkInType == 'morning',
+                                    onSelected: (selected) {
+                                      if (!selected) return;
+                                      setState(() => _checkInType = 'morning');
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: ChoiceChip(
+                                    label: const Text("Going Out"),
+                                    selected: _checkInType == 'outing',
+                                    onSelected: (selected) {
+                                      if (!selected) return;
+                                      setState(() => _checkInType = 'outing');
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         
                         // Confirm Button
                         LoadingButton(

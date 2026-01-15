@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:camera/camera.dart';
 import 'dart:io';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import '../services/api_service.dart';
+import '../providers/app_providers.dart';
 import '../utils/ui_helpers.dart';
 
-class RegisterStudentScreen extends StatefulWidget {
+class RegisterStudentScreen extends ConsumerStatefulWidget {
   const RegisterStudentScreen({super.key});
 
   @override
-  State<RegisterStudentScreen> createState() => _RegisterStudentScreenState();
+  ConsumerState<RegisterStudentScreen> createState() => _RegisterStudentScreenState();
 }
 
-class _RegisterStudentScreenState extends State<RegisterStudentScreen> 
+class _RegisterStudentScreenState extends ConsumerState<RegisterStudentScreen> 
     with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _studentIdController = TextEditingController();
@@ -330,6 +332,23 @@ class _RegisterStudentScreenState extends State<RegisterStudentScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final user = ref.watch(authProvider).user ?? {};
+    final role = (user['role'] ?? 'teacher').toString();
+    final isAdmin = role == 'admin' || role == 'super_admin';
+
+    if (!isAdmin) {
+      return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF101922) : const Color(0xFFF6F7F8),
+        body: SafeArea(
+          child: Center(
+            child: Text(
+              "Access restricted to administrators",
+              style: theme.textTheme.titleMedium,
+            ),
+          ),
+        ),
+      );
+    }
     
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF101922) : const Color(0xFFF6F7F8),

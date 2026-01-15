@@ -59,7 +59,10 @@ async def get_attendance_report(
         }
         
         for student in (students or []):
-            student_attendance = [r for r in attendance_records if r.student_id == student.id]
+            student_attendance = [
+                r for r in attendance_records
+                if r.student_id == student.id and (r.status or "present") in ["present", "late"]
+            ]
             days_present = len(student_attendance)
             total_days = report_data["total_days"]
             
@@ -118,7 +121,7 @@ async def get_student_report(
             attendance_records = crud.get_attendance_by_student(db, student_id, start, end)
         
         total_days = (end - start).days + 1
-        days_present = len(attendance_records)
+        days_present = len([r for r in attendance_records if (r.status or "present") in ["present", "late"]])
         
         return {
             "student_id": student.student_id,
@@ -133,9 +136,10 @@ async def get_student_report(
             "attendance_rate": round((days_present / total_days * 100) if total_days > 0 else 0, 1),
             "attendance_history": [
                 {
-                    "date": r.timestamp.date().isoformat() if r.timestamp else None,
-                    "time": r.timestamp.time().isoformat() if r.timestamp else None,
-                    "confidence": r.confidence_score
+                    "date": r.marked_at.date().isoformat() if r.marked_at else None,
+                    "time": r.marked_at.time().isoformat() if r.marked_at else None,
+                    "confidence": r.confidence_score,
+                    "status": r.status or "present"
                 }
                 for r in attendance_records
             ]

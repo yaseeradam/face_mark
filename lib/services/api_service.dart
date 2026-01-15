@@ -164,6 +164,7 @@ class ApiService {
 
   static Future<void> logout() async {
     await StorageService.clearToken();
+    await StorageService.removeString('user_profile');
     _token = null;
   }
 
@@ -190,6 +191,14 @@ class ApiService {
   // Profile & Settings endpoints
   static Future<Map<String, dynamic>> getProfile() async {
     return await _makeRequest('GET', '/teachers/me');
+  }
+
+  static Future<Map<String, dynamic>> getAttendanceSettings() async {
+    return await _makeRequest('GET', '/attendance/settings');
+  }
+
+  static Future<Map<String, dynamic>> updateAttendanceSettings(Map<String, dynamic> settings) async {
+    return await _makeRequest('PUT', '/attendance/settings', body: settings);
   }
 
   static Future<Map<String, dynamic>> setupFaceId(File imageFile) async {
@@ -371,9 +380,11 @@ class ApiService {
   static Future<Map<String, dynamic>> verifyFace({
     int? classId,
     bool autoMark = false,
+    String checkInType = 'morning',
     required File imageFile,
   }) async {
     final fields = {'auto_mark': autoMark.toString()};
+    fields['check_in_type'] = checkInType;
     if (classId != null) {
       fields['class_id'] = classId.toString();
     }
@@ -408,7 +419,8 @@ class ApiService {
     final studentId = attendanceData['student_id'];
     final classId = attendanceData['class_id'];
     final confidenceScore = attendanceData['confidence_score'] ?? 0.0;
-    final endpoint = '/attendance/mark?student_id=$studentId&class_id=$classId&confidence_score=$confidenceScore';
+    final checkInType = attendanceData['check_in_type'] ?? 'morning';
+    final endpoint = '/attendance/mark?student_id=$studentId&class_id=$classId&confidence_score=$confidenceScore&check_in_type=$checkInType';
     return await _makeRequest('POST', endpoint);
   }
 

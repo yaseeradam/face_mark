@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:convert';
 import '../services/api_service.dart';
 import '../services/validation_service.dart';
 import '../providers/app_providers.dart';
 import '../widgets/common_widgets.dart';
 import '../utils/ui_helpers.dart';
 import '../theme/app_theme.dart';
+import '../services/storage_service.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -82,7 +84,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     setState(() => _isLoading = false);
     
     if (result['success']) {
-      ref.read(authProvider.notifier).login(result['data']['access_token'], result['data']['teacher'] ?? {});
+      final user = Map<String, dynamic>.from(result['data']['teacher'] ?? {});
+      await StorageService.saveString('user_profile', jsonEncode(user));
+      ref.read(authProvider.notifier).login(result['data']['access_token'], user);
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/dashboard');
       }
@@ -178,11 +182,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // Logo/Brand
-                          _buildLogo(isDark),
-                          const SizedBox(height: 48),
-                          
-                          // Login Card
+                          // Login Card (now contains logo)
                           _buildLoginCard(context, isDark),
                           
                           const SizedBox(height: 32),
@@ -275,6 +275,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Logo inside card
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: AppTheme.primaryGradient,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primary.withOpacity(0.3),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                    spreadRadius: -4,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.face_retouching_natural,
+                size: 40,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          
           // Header
           Text(
             "Welcome back",
@@ -289,7 +314,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 28),
           
           // Email/ID Field
           _buildInputField(

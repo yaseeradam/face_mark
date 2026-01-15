@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
+import '../providers/app_providers.dart';
 import 'package:camera/camera.dart';
 import 'dart:io';
 
@@ -130,6 +131,9 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final user = ref.watch(authProvider).user ?? {};
+    final role = (user['role'] ?? 'teacher').toString();
+    final isAdmin = role == 'admin' || role == 'super_admin';
 
     final String name = _student['full_name'] ?? 'Unknown Student';
     final String studentId = _student['student_id'] ?? 'N/A';
@@ -251,54 +255,56 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
                         const SizedBox(height: 32),
                         
                         // Action Buttons
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Edit feature coming soon!')),
-                                  );
-                                },
-                                icon: const Icon(Icons.edit),
-                                label: const Text("Edit Profile"),
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
-                                  foregroundColor: theme.colorScheme.onSurface,
+                        if (isAdmin) ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Edit feature coming soon!')),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.edit),
+                                  label: const Text("Edit Profile"),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                                    foregroundColor: theme.colorScheme.onSurface,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: FilledButton.icon(
-                                onPressed: _updateFace,
-                                icon: const Icon(Icons.face_retouching_natural),
-                                label: const Text("Update Face"),
-                                style: FilledButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  backgroundColor: theme.colorScheme.primary,
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: _updateFace,
+                                  icon: const Icon(Icons.face_retouching_natural),
+                                  label: const Text("Update Face"),
+                                  style: FilledButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    backgroundColor: theme.colorScheme.primary,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: TextButton.icon(
-                            onPressed: _deleteStudent,
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
-                            label: const Text("Delete Student", style: TextStyle(color: Colors.red)),
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              backgroundColor: Colors.red.withOpacity(0.1),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: TextButton.icon(
+                              onPressed: _deleteStudent,
+                              icon: const Icon(Icons.delete_outline, color: Colors.red),
+                              label: const Text("Delete Student", style: TextStyle(color: Colors.red)),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                backgroundColor: Colors.red.withOpacity(0.1),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),

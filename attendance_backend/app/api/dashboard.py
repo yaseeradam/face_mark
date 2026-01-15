@@ -6,9 +6,11 @@ from ..core.security import require_teacher
 from ..db.base import get_db
 from ..db import crud
 from ..services.class_service import ClassService
+from ..services.attendance_service import AttendanceService
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 class_service = ClassService()
+attendance_service = AttendanceService()
 
 @router.get("/stats")
 async def get_dashboard_stats(
@@ -33,11 +35,11 @@ async def get_dashboard_stats(
         
         # Today's attendance
         today = date.today()
-        today_attendance = crud.get_attendance_by_date(db, today, class_ids=class_ids) if hasattr(crud, 'get_attendance_by_date') else []
+        today_attendance = await attendance_service.get_attendance_by_date(db, today, class_ids=class_ids) if hasattr(crud, 'get_attendance_by_date') else []
         
         # Calculate attendance rate
         total_students = len(students) if students else 0
-        present_today = len(today_attendance) if today_attendance else 0
+        present_today = len([r for r in today_attendance if (r.status or "present") in ["present", "late"]]) if today_attendance else 0
         attendance_rate = (present_today / total_students * 100) if total_students > 0 else 0
         
         # Get enrolled faces count
@@ -79,15 +81,16 @@ async def get_recent_activity(
 
         # Get recent attendance records
         today = date.today()
-        attendance_records = crud.get_attendance_by_date(db, today, class_ids=class_ids) if hasattr(crud, 'get_attendance_by_date') else []
+        attendance_records = await attendance_service.get_attendance_by_date(db, today, class_ids=class_ids) if hasattr(crud, 'get_attendance_by_date') else []
         
         activities = []
         for record in attendance_records[:limit]:
+            status_label = record.status or "present"
             activities.append({
                 "id": record.id,
                 "type": "attendance",
-                "description": f"{record.student.full_name if record.student else 'Unknown'} marked present",
-                "timestamp": record.timestamp.isoformat() if record.timestamp else datetime.now().isoformat(),
+                "description": f"{record.student.full_name if record.student else 'Unknown'} marked {status_label}",
+                "timestamp": record.marked_at.isoformat() if record.marked_at else datetime.now().isoformat(),
                 "student_name": record.student.full_name if record.student else "Unknown",
                 "class_name": record.class_obj.class_name if record.class_obj else "Unknown"
             })

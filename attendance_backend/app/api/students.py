@@ -2,7 +2,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, status, Depends, Query
 from sqlalchemy.orm import Session
-from ..core.security import require_teacher
+from ..core.security import require_teacher, require_admin
 from ..db.base import get_db
 from ..services.student_service import StudentService
 from ..services.class_service import ClassService
@@ -16,7 +16,7 @@ class_service = ClassService()
 async def create_student(
     student_data: StudentCreate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_teacher)
+    current_user: dict = Depends(require_admin)
 ):
     """Create a new student"""
     try:
@@ -121,7 +121,7 @@ async def update_student(
     student_id: int,
     student_data: StudentUpdate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_teacher)
+    current_user: dict = Depends(require_admin)
 ):
     """Update a student"""
     student = await student_service.get_student_by_id(student_id, db)
@@ -149,7 +149,7 @@ async def update_student(
 async def delete_student(
     student_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_teacher)
+    current_user: dict = Depends(require_admin)
 ):
     """Delete a student"""
     student = await student_service.get_student_by_id(student_id, db)

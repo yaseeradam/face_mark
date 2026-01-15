@@ -3,6 +3,7 @@ import 'package:camera/camera.dart';
 import 'dart:io';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import '../services/api_service.dart';
+import '../services/storage_service.dart';
 import '../utils/ui_helpers.dart';
 
 class MarkAttendanceScreen1 extends StatefulWidget {
@@ -54,6 +55,10 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
   List<Map<String, dynamic>> _classes = [];
   bool _isScanning = false;
   Map<String, dynamic>? _recognizedStudent;
+  bool _multipleCheckinsEnabled = false;
+  String _checkInType = 'morning';
+  DateTime? _lastFrameProcessed;
+  static const _frameProcessingInterval = Duration(milliseconds: 150);
   
   @override
   void initState() {
@@ -61,6 +66,7 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
     _loadClasses();
     _initializeFaceDetector();
     _initializeCamera();
+    _loadCheckinSettings();
     
     // Scanning line animation (continuous)
     _scanAnimationController = AnimationController(
@@ -112,6 +118,11 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
       ),
     );
   }
+
+  void _loadCheckinSettings() {
+    final enabled = StorageService.getBool('settings_multiple_checkins', defaultValue: false);
+    setState(() => _multipleCheckinsEnabled = enabled);
+  }
   
   void _initializeFaceDetector() {
     final options = FaceDetectorOptions(
@@ -146,7 +157,7 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
 
       _cameraController = CameraController(
         frontCamera,
-        ResolutionPreset.medium, // Use medium for faster processing
+        ResolutionPreset.low,
         enableAudio: false,
         imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
       );
@@ -169,6 +180,12 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
     _isDetectingFaces = true;
     _cameraController!.startImageStream((CameraImage image) {
       if (!_isDetectingFaces || _isProcessingImage || _isScanning) return;
+      final now = DateTime.now();
+      if (_lastFrameProcessed != null &&
+          now.difference(_lastFrameProcessed!) < _frameProcessingInterval) {
+        return;
+      }
+      _lastFrameProcessed = now;
       _processImageForFaceDetection(image);
     });
   }
@@ -1644,51 +1661,85 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
           child: Opacity(opacity: value, child: child),
         );
       },
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: _resetScan,
-              icon: const Icon(Icons.edit, size: 20),
-              label: const Text("Manual Entry"),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
+          if (_multipleCheckinsEnabled)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text("Morning"),
+                      selected: _checkInType == 'morning',
+                      onSelected: (selected) {
+                        if (!selected) return;
+                        setState(() => _checkInType = 'morning');
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text("Going Out"),
+                      selected: _checkInType == 'outing',
+                      onSelected: (selected) {
+                        if (!selected) return;
+                        setState(() => _checkInType = 'outing');
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 2,
-            child: ElevatedButton.icon(
-              onPressed: () async {
-                final result = await ApiService.markAttendance({
-                  'student_id': student['id'],
-                  'class_id': _selectedClassId,
-                  'status': 'present',
-                });
-                
-                if (mounted) {
-                  if (result['success']) {
-                    UIHelpers.showSuccess(context, "Attendance confirmed!");
-                    Navigator.pop(context);
-                  } else {
-                    UIHelpers.showError(context, result['error'] ?? 'Failed to confirm');
-                  }
-                }
-              },
-              icon: const Icon(Icons.check, size: 20),
-              label: const Text("Confirm Attendance"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                elevation: 4,
-                shadowColor: theme.colorScheme.primary.withOpacity(0.3),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _resetScan,
+                  icon: const Icon(Icons.edit, size: 20),
+                  label: const Text("Manual Entry"),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    final result = await ApiService.markAttendance({
+                      'student_id': student['id'],
+                      'class_id': _selectedClassId,
+                      'status': 'present',
+                      'check_in_type': _checkInType,
+                    });
+                    
+                    if (mounted) {
+                      if (result['success']) {
+                        UIHelpers.showSuccess(context, "Attendance confirmed!");
+                        Navigator.pop(context);
+                      } else {
+                        UIHelpers.showError(context, result['error'] ?? 'Failed to confirm');
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.check, size: 20),
+                  label: const Text("Confirm Attendance"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    elevation: 4,
+                    shadowColor: theme.colorScheme.primary.withOpacity(0.3),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -13,6 +13,7 @@ import 'teacher_management_screen.dart';
 import '../services/api_service.dart';
 import '../providers/app_providers.dart';
 import '../theme/app_theme.dart';
+import '../utils/navigation_utils.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -92,6 +93,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final userName = (user['full_name'] ?? 'Admin').toString();
     final userRole = (user['role'] ?? 'admin').toString();
     final isSuperAdmin = userRole == 'super_admin';
+    final isAdmin = userRole == 'admin' || isSuperAdmin;
+    String roleLabel = 'Teacher';
+    if (userRole == 'super_admin') roleLabel = 'Super Admin';
+    else if (userRole == 'admin') roleLabel = 'Administrator';
     
     // Get greeting based on time of day
     final hour = DateTime.now().hour;
@@ -154,6 +159,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                           userName,
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isAdmin
+                                ? AppTheme.primary.withOpacity(0.15)
+                                : AppTheme.success.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            roleLabel,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isAdmin ? AppTheme.primary : AppTheme.success,
+                            ),
                           ),
                         ),
                       ],
@@ -257,18 +280,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                         crossAxisSpacing: 12,
                         childAspectRatio: 1.15,
                         children: [
-                          _buildActionCard(
-                            context,
-                            icon: Icons.person_add_rounded,
-                            label: "Register Student",
-                            description: "Add new face",
-                            color: AppTheme.info,
-                            isDark: isDark,
-                            onTap: () => Navigator.push(
+                          if (isAdmin)
+                            _buildActionCard(
                               context,
-                              MaterialPageRoute(builder: (_) => const RegisterStudentScreenNew()),
+                              icon: Icons.person_add_rounded,
+                              label: "Register Student",
+                              description: "Add new face",
+                              color: AppTheme.info,
+                              isDark: isDark,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const RegisterStudentScreenNew()),
+                              ),
                             ),
-                          ),
                           _buildActionCard(
                             context,
                             icon: Icons.face_retouching_natural,
@@ -276,41 +300,45 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                             description: "Mark attendance",
                             color: AppTheme.success,
                             isDark: isDark,
-                            onTap: () => ref.read(navigationProvider.notifier).state = 1,
+                            onTap: () => ref.read(navigationProvider.notifier).state =
+                                NavigationUtils.indexForKey(userRole, 'scan'),
                           ),
-                          _buildActionCard(
-                            context,
-                            icon: Icons.class_rounded,
-                            label: "Classes",
-                            description: "Manage classes",
-                            color: AppTheme.accent,
-                            isDark: isDark,
-                            onTap: () => Navigator.push(
+                          if (isAdmin)
+                            _buildActionCard(
                               context,
-                              MaterialPageRoute(builder: (_) => const ClassManagementScreen()),
+                              icon: Icons.class_rounded,
+                              label: "Classes",
+                              description: "Manage classes",
+                              color: AppTheme.accent,
+                              isDark: isDark,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const ClassManagementScreen()),
+                              ),
                             ),
-                          ),
-                          _buildActionCard(
-                            context,
-                            icon: Icons.school_rounded,
-                            label: "Teachers",
-                            description: "Manage staff",
-                            color: AppTheme.warning,
-                            isDark: isDark,
-                            onTap: () => Navigator.push(
+                          if (isAdmin)
+                            _buildActionCard(
                               context,
-                              MaterialPageRoute(builder: (_) => const TeacherManagementScreen()),
+                              icon: Icons.school_rounded,
+                              label: "Teachers",
+                              description: "Manage staff",
+                              color: AppTheme.warning,
+                              isDark: isDark,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const TeacherManagementScreen()),
+                              ),
                             ),
-                          ),
-                          _buildActionCard(
-                            context,
-                            icon: Icons.manage_accounts_rounded,
-                            label: "Users",
-                            description: "User management",
-                            color: const Color(0xFF6366F1),
-                            isDark: isDark,
-                            onTap: () => Navigator.pushNamed(context, '/admin-user-management'),
-                          ),
+                          if (isAdmin)
+                            _buildActionCard(
+                              context,
+                              icon: Icons.manage_accounts_rounded,
+                              label: "Users",
+                              description: "User management",
+                              color: const Color(0xFF6366F1),
+                              isDark: isDark,
+                              onTap: () => Navigator.pushNamed(context, '/admin-user-management'),
+                            ),
                           if (isSuperAdmin)
                             _buildActionCard(
                               context,
@@ -328,7 +356,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                             description: "View analytics",
                             color: const Color(0xFF14B8A6),
                             isDark: isDark,
-                            onTap: () => ref.read(navigationProvider.notifier).state = 3,
+                            onTap: () => ref.read(navigationProvider.notifier).state =
+                                NavigationUtils.indexForKey(userRole, 'reports'),
                           ),
                           _buildActionCard(
                             context,
@@ -337,7 +366,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                             description: "App settings",
                             color: AppTheme.textSecondaryLight,
                             isDark: isDark,
-                            onTap: () => ref.read(navigationProvider.notifier).state = 4,
+                            onTap: () => ref.read(navigationProvider.notifier).state =
+                                NavigationUtils.indexForKey(userRole, 'settings'),
                           ),
                         ],
                       ),

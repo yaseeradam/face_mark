@@ -55,19 +55,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  void _loadAttendanceSettings() {
+  Future<void> _loadAttendanceSettings() async {
     final storedSchoolStart = StorageService.getString(_schoolStartTimeKey);
     final storedLateCutoff = StorageService.getString(_lateCutoffTimeKey);
     final storedAutoAbsent = StorageService.getString(_autoAbsentTimeKey);
 
-    setState(() {
-      _schoolStartTime = _timeFromStorage(storedSchoolStart, _schoolStartTime);
-      _lateCutoffTime = _timeFromStorage(storedLateCutoff, _lateCutoffTime);
-      _autoAbsentTime = _timeFromStorage(storedAutoAbsent, _autoAbsentTime);
-      _allowLateArrivals = StorageService.getBool(_allowLateArrivalsKey, defaultValue: _allowLateArrivals);
-      _requireAbsenceExcuse = StorageService.getBool(_requireAbsenceExcuseKey, defaultValue: _requireAbsenceExcuse);
-      _multipleCheckinsEnabled = StorageService.getBool(_multipleCheckinsKey, defaultValue: _multipleCheckinsEnabled);
-    });
+    if (mounted) {
+      setState(() {
+        _schoolStartTime = _timeFromStorage(storedSchoolStart, _schoolStartTime);
+        _lateCutoffTime = _timeFromStorage(storedLateCutoff, _lateCutoffTime);
+        _autoAbsentTime = _timeFromStorage(storedAutoAbsent, _autoAbsentTime);
+        _allowLateArrivals = StorageService.getBool(_allowLateArrivalsKey, defaultValue: _allowLateArrivals);
+        _requireAbsenceExcuse = StorageService.getBool(_requireAbsenceExcuseKey, defaultValue: _requireAbsenceExcuse);
+        _multipleCheckinsEnabled = StorageService.getBool(_multipleCheckinsKey, defaultValue: _multipleCheckinsEnabled);
+      });
+    }
+
+    final result = await ApiService.getAttendanceSettings();
+    if (result['success'] && result['data'] != null) {
+      final data = Map<String, dynamic>.from(result['data'] as Map);
+      final schoolStart = _timeFromStorage(data['school_start_time'], _schoolStartTime);
+      final lateCutoff = _timeFromStorage(data['late_cutoff_time'], _lateCutoffTime);
+      final autoAbsent = _timeFromStorage(data['auto_absent_time'], _autoAbsentTime);
+      final allowLate = data['allow_late_arrivals'] == true;
+      final requireExcuse = data['require_absence_excuse'] == true;
+      final multipleCheckins = data['multiple_checkins'] == true;
+
+      if (mounted) {
+        setState(() {
+          _schoolStartTime = schoolStart;
+          _lateCutoffTime = lateCutoff;
+          _autoAbsentTime = autoAbsent;
+          _allowLateArrivals = allowLate;
+          _requireAbsenceExcuse = requireExcuse;
+          _multipleCheckinsEnabled = multipleCheckins;
+        });
+      }
+
+      await StorageService.saveString(_schoolStartTimeKey, _timeToStorage(schoolStart));
+      await StorageService.saveString(_lateCutoffTimeKey, _timeToStorage(lateCutoff));
+      await StorageService.saveString(_autoAbsentTimeKey, _timeToStorage(autoAbsent));
+      await StorageService.saveBool(_allowLateArrivalsKey, allowLate);
+      await StorageService.saveBool(_requireAbsenceExcuseKey, requireExcuse);
+      await StorageService.saveBool(_multipleCheckinsKey, multipleCheckins);
+    }
   }
 
   TimeOfDay _timeFromStorage(String? value, TimeOfDay fallback) {
@@ -103,6 +134,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (picked == null) return;
     onPicked(picked);
     await StorageService.saveString(storageKey, _timeToStorage(picked));
+    await _syncAttendanceSettings();
+  }
+
+  Future<void> _syncAttendanceSettings() async {
+    final result = await ApiService.updateAttendanceSettings({
+      'school_start_time': _timeToStorage(_schoolStartTime),
+      'late_cutoff_time': _timeToStorage(_lateCutoffTime),
+      'auto_absent_time': _timeToStorage(_autoAbsentTime),
+      'allow_late_arrivals': _allowLateArrivals,
+      'require_absence_excuse': _requireAbsenceExcuse,
+      'multiple_checkins': _multipleCheckinsEnabled,
+    });
+
+    if (!result['success'] && mounted) {
+      _showSnackBar(result['error'] ?? 'Saved locally. Sync failed.', isError: false);
+    }
   }
 
   Future<void> _setupFaceId() async {
@@ -334,6 +381,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (confirmed == true) {
       await ApiService.logout();
       await StorageService.clearToken();
+      await StorageService.removeString('user_profile');
       ref.read(authProvider.notifier).logout();
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/login');
@@ -357,6 +405,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final role = (_currentUser?['role'] ?? '').toString();
+    final canEditAttendanceSettings = role == 'admin' || role == 'super_admin';
 
     if (_isLoading) {
       return Scaffold(
@@ -440,12 +490,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         iconColor: AppTheme.primary,
                         title: 'School Start Time',
                         time: _formatTime(context, _schoolStartTime),
-                        onTap: () => _pickTime(
-                          context: context,
-                          storageKey: _schoolStartTimeKey,
-                          currentTime: _schoolStartTime,
-                          onPicked: (time) => setState(() => _schoolStartTime = time),
-                        ),
+                        onTap: canEditAttendanceSettings
+                            ? () => _pickTime(
+                                  context: context,
+                                  storageKey: _schoolStartTimeKey,
+                                  currentTime: _schoolStartTime,
+                                  onPicked: (time) => setState(() => _schoolStartTime = time),
+                                )
+                            : null,
                         isDark: isDark,
                       ),
                       _buildDivider(isDark),
@@ -454,12 +506,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         iconColor: AppTheme.warning,
                         title: 'Late Cutoff Time',
                         time: _formatTime(context, _lateCutoffTime),
-                        onTap: () => _pickTime(
-                          context: context,
-                          storageKey: _lateCutoffTimeKey,
-                          currentTime: _lateCutoffTime,
-                          onPicked: (time) => setState(() => _lateCutoffTime = time),
-                        ),
+                        onTap: canEditAttendanceSettings
+                            ? () => _pickTime(
+                                  context: context,
+                                  storageKey: _lateCutoffTimeKey,
+                                  currentTime: _lateCutoffTime,
+                                  onPicked: (time) => setState(() => _lateCutoffTime = time),
+                                )
+                            : null,
                         isDark: isDark,
                       ),
                       _buildDivider(isDark),
@@ -468,12 +522,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         iconColor: AppTheme.error,
                         title: 'Auto-Mark Absent',
                         time: _formatTime(context, _autoAbsentTime),
-                        onTap: () => _pickTime(
-                          context: context,
-                          storageKey: _autoAbsentTimeKey,
-                          currentTime: _autoAbsentTime,
-                          onPicked: (time) => setState(() => _autoAbsentTime = time),
-                        ),
+                        onTap: canEditAttendanceSettings
+                            ? () => _pickTime(
+                                  context: context,
+                                  storageKey: _autoAbsentTimeKey,
+                                  currentTime: _autoAbsentTime,
+                                  onPicked: (time) => setState(() => _autoAbsentTime = time),
+                                )
+                            : null,
                         isDark: isDark,
                       ),
                       _buildDivider(isDark),
@@ -483,10 +539,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         title: 'Allow Late Arrivals',
                         subtitle: 'Mark students late instead of absent',
                         value: _allowLateArrivals,
-                        onChanged: (v) async {
-                          setState(() => _allowLateArrivals = v);
-                          await StorageService.saveBool(_allowLateArrivalsKey, v);
-                        },
+                        onChanged: canEditAttendanceSettings
+                            ? (v) async {
+                                setState(() => _allowLateArrivals = v);
+                                await StorageService.saveBool(_allowLateArrivalsKey, v);
+                                await _syncAttendanceSettings();
+                              }
+                            : null,
                         isDark: isDark,
                       ),
                       _buildDivider(isDark),
@@ -496,10 +555,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         title: 'Require Excuse',
                         subtitle: 'Require reason for absences',
                         value: _requireAbsenceExcuse,
-                        onChanged: (v) async {
-                          setState(() => _requireAbsenceExcuse = v);
-                          await StorageService.saveBool(_requireAbsenceExcuseKey, v);
-                        },
+                        onChanged: canEditAttendanceSettings
+                            ? (v) async {
+                                setState(() => _requireAbsenceExcuse = v);
+                                await StorageService.saveBool(_requireAbsenceExcuseKey, v);
+                                await _syncAttendanceSettings();
+                              }
+                            : null,
                         isDark: isDark,
                       ),
                       _buildDivider(isDark),
@@ -509,10 +571,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         title: 'Multiple Check-ins',
                         subtitle: 'Enable check-in/check-out',
                         value: _multipleCheckinsEnabled,
-                        onChanged: (v) async {
-                          setState(() => _multipleCheckinsEnabled = v);
-                          await StorageService.saveBool(_multipleCheckinsKey, v);
-                        },
+                        onChanged: canEditAttendanceSettings
+                            ? (v) async {
+                                setState(() => _multipleCheckinsEnabled = v);
+                                await StorageService.saveBool(_multipleCheckinsKey, v);
+                                await _syncAttendanceSettings();
+                              }
+                            : null,
                         isDark: isDark,
                       ),
                     ],
@@ -736,9 +801,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required String title,
     required String subtitle,
     required bool value,
-    required ValueChanged<bool> onChanged,
+    required ValueChanged<bool>? onChanged,
     required bool isDark,
   }) {
+    final isEnabled = onChanged != null;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
@@ -753,26 +819,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const SizedBox(width: 14),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? AppTheme.textPrimaryDark : AppTheme.textPrimaryLight,
+            child: Opacity(
+              opacity: isEnabled ? 1 : 0.55,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? AppTheme.textPrimaryDark : AppTheme.textPrimaryLight,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isDark ? AppTheme.textTertiaryDark : AppTheme.textTertiaryLight,
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? AppTheme.textTertiaryDark : AppTheme.textTertiaryLight,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           Switch(
@@ -849,9 +918,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required Color iconColor,
     required String title,
     required String time,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
     required bool isDark,
   }) {
+    final isEnabled = onTap != null;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -870,12 +940,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(width: 14),
               Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? AppTheme.textPrimaryDark : AppTheme.textPrimaryLight,
+                child: Opacity(
+                  opacity: isEnabled ? 1 : 0.55,
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? AppTheme.textPrimaryDark : AppTheme.textPrimaryLight,
+                    ),
                   ),
                 ),
               ),
@@ -890,7 +963,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: AppTheme.primary,
+                    color: isEnabled ? AppTheme.primary : (isDark ? AppTheme.textTertiaryDark : AppTheme.textTertiaryLight),
                   ),
                 ),
               ),

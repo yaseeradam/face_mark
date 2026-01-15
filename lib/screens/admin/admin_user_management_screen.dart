@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/api_service.dart';
+import '../../providers/app_providers.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -24,7 +25,10 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
   @override
   void initState() {
     super.initState();
-    _loadUsers();
+    final role = (ref.read(authProvider).user?['role'] ?? 'teacher').toString();
+    if (role == 'admin' || role == 'super_admin') {
+      _loadUsers();
+    }
   }
 
   Future<void> _loadUsers() async {
@@ -251,6 +255,22 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final role = (ref.watch(authProvider).user?['role'] ?? 'teacher').toString();
+    final isAdmin = role == 'admin' || role == 'super_admin';
+
+    if (!isAdmin) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('User Management'),
+        ),
+        body: Center(
+          child: Text(
+            "Access restricted to administrators",
+            style: theme.textTheme.titleMedium,
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(

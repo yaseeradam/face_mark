@@ -18,6 +18,7 @@ async def mark_attendance(
     student_id: int,
     class_id: int,
     confidence_score: float,
+    check_in_type: str = "morning",
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_teacher)
 ):
@@ -28,7 +29,7 @@ async def mark_attendance(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this class")
     
     try:
-        attendance = await attendance_service.mark_attendance(student_id, class_id, confidence_score, db)
+        attendance = await attendance_service.mark_attendance(student_id, class_id, confidence_score, db, check_in_type=check_in_type)
         return AttendanceResponse.model_validate(attendance)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -147,9 +148,10 @@ async def get_attendance_history(
                 "student_student_id": record.student.student_id if record.student else "Unknown",
                 "class_id": record.class_id,
                 "class_name": record.class_obj.class_name if record.class_obj else "Unknown",
-                "timestamp": record.timestamp.isoformat() if record.timestamp else None,
+                "timestamp": record.marked_at.isoformat() if record.marked_at else None,
                 "confidence_score": record.confidence_score,
-                "status": "present"
+                "status": record.status or "present",
+                "check_in_type": record.check_in_type or "morning"
             })
         
         return result
@@ -189,7 +191,7 @@ async def export_attendance_csv(
             getattr(record.student, 'full_name', 'Unknown'),
             getattr(record.student, 'student_id', 'Unknown'),
             record.class_id,
-            record.timestamp.strftime('%H:%M:%S'),
+            record.marked_at.strftime('%H:%M:%S'),
             f"{record.confidence_score:.2f}%"
         ])
     

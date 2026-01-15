@@ -7,13 +7,13 @@ class AppTheme {
   // Clean, minimal, with soft shadows and gentle gradients
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // Primary Brand Colors - Soft Blue Palette
-  static const Color primary = Color(0xFF6366F1);       // Indigo-500 - Main accent
-  static const Color primaryLight = Color(0xFF818CF8); // Indigo-400
-  static const Color primaryDark = Color(0xFF4F46E5);  // Indigo-600
+  // Primary Brand Colors - Fresh Green/Emerald Palette
+  static const Color primary = Color(0xFF10B981);       // Emerald-500 - Main accent
+  static const Color primaryLight = Color(0xFF34D399); // Emerald-400
+  static const Color primaryDark = Color(0xFF059669);  // Emerald-600
   
   // Accent Colors - Soft & Modern
-  static const Color accent = Color(0xFF8B5CF6);        // Violet-500
+  static const Color accent = Color(0xFF22C55E);        // Green-500
   static const Color success = Color(0xFF10B981);       // Emerald-500
   static const Color warning = Color(0xFFF59E0B);       // Amber-500
   static const Color error = Color(0xFFEF4444);         // Red-500
@@ -99,9 +99,9 @@ class AppTheme {
     
     colorScheme: const ColorScheme.light(
       primary: primary,
-      primaryContainer: Color(0xFFE0E7FF), // Indigo-100
+      primaryContainer: Color(0xFFD1FAE5), // Emerald-100
       secondary: accent,
-      secondaryContainer: Color(0xFFEDE9FE), // Violet-100
+      secondaryContainer: Color(0xFFDCFCE7), // Green-100
       surface: surfaceLight,
       surfaceContainerHighest: surfaceSecondaryLight,
       onSurface: textPrimaryLight,
@@ -320,9 +320,9 @@ class AppTheme {
     
     colorScheme: const ColorScheme.dark(
       primary: primaryLight,
-      primaryContainer: Color(0xFF312E81), // Indigo-900
+      primaryContainer: Color(0xFF064E3B), // Emerald-900
       secondary: accent,
-      secondaryContainer: Color(0xFF4C1D95), // Violet-900
+      secondaryContainer: Color(0xFF14532D), // Green-900
       surface: surfaceDark,
       surfaceContainerHighest: surfaceSecondaryDark,
       onSurface: textPrimaryDark,

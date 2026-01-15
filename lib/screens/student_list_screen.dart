@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'student_details_screen.dart';
 import 'register_student_screen_new.dart';
 import '../services/api_service.dart';
+import '../providers/app_providers.dart';
 import '../utils/ui_helpers.dart';
 
 class StudentListScreen extends ConsumerStatefulWidget {
@@ -79,6 +80,9 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final user = ref.watch(authProvider).user ?? {};
+    final role = (user['role'] ?? 'teacher').toString();
+    final isAdmin = role == 'admin' || role == 'super_admin';
 
     return Scaffold(
       body: Stack(
@@ -153,11 +157,12 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
                         const SizedBox(height: 16),
                         Text('No students found', style: theme.textTheme.titleMedium),
                         const SizedBox(height: 8),
-                        TextButton.icon(
-                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterStudentScreenNew())),
-                          icon: const Icon(Icons.add),
-                          label: const Text('Add First Student'),
-                        ),
+                        if (isAdmin)
+                          TextButton.icon(
+                            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterStudentScreenNew())),
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add First Student'),
+                          ),
                       ],
                     ),
                   ),
@@ -190,18 +195,19 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
             ],
           ),
           
-          Positioned(
-            bottom: 90,
-            right: 16,
-            child: FloatingActionButton(
-              onPressed: () async {
-                await Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterStudentScreenNew()));
-                _loadStudents();
-              },
-              backgroundColor: theme.colorScheme.primary,
-              child: const Icon(Icons.add, color: Colors.white),
+          if (isAdmin)
+            Positioned(
+              bottom: 90,
+              right: 16,
+              child: FloatingActionButton(
+                onPressed: () async {
+                  await Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterStudentScreenNew()));
+                  _loadStudents();
+                },
+                backgroundColor: theme.colorScheme.primary,
+                child: const Icon(Icons.add, color: Colors.white),
+              ),
             ),
-          ),
         ],
       ),
     );

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
+import '../services/storage_service.dart';
 import '../utils/ui_helpers.dart';
 
 class ScanAttendanceScreen extends StatefulWidget {
@@ -41,17 +42,29 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
   bool _isScanning = false;
   Map<String, dynamic>? _recognizedStudent;
   bool _showShimmer = true; // Initially show shimmer scanning state
+  bool _multipleCheckinsEnabled = false;
+  String _checkInType = 'morning';
+  DateTime? _lastFrameProcessed;
+  static const Duration _frameProcessingInterval = Duration(milliseconds: 150);
 
   @override
   void initState() {
     super.initState();
     _initializeFaceDetector();
     _initializeCamera();
+    _loadCheckinSettings();
     
     _scanAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat();
+  }
+
+  void _loadCheckinSettings() {
+    final enabled = StorageService.getBool('settings_multiple_checkins', defaultValue: false);
+    setState(() {
+      _multipleCheckinsEnabled = enabled;
+    });
   }
   
   void _initializeFaceDetector() {
@@ -76,7 +89,7 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
 
       _cameraController = CameraController(
         selectedCamera,
-        ResolutionPreset.medium,
+        ResolutionPreset.low,
         enableAudio: false,
         imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
       );
@@ -117,6 +130,12 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
     _isDetectingFaces = true;
     _cameraController!.startImageStream((CameraImage image) {
       if (!_isDetectingFaces || _isProcessingImage || _isScanning) return;
+      final now = DateTime.now();
+      if (_lastFrameProcessed != null &&
+          now.difference(_lastFrameProcessed!) < _frameProcessingInterval) {
+        return;
+      }
+      _lastFrameProcessed = now;
       _processImageForFaceDetection(image);
     });
   }
@@ -366,6 +385,7 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
         'student_id': _recognizedStudent!['student_id'],
         'class_id': _recognizedStudent!['class_id'],
         'confidence_score': _recognizedStudent!['confidence_score'] ?? 0.0,
+        'check_in_type': _checkInType,
       });
       
       if (mounted) {
@@ -725,7 +745,7 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
       if (!_faceDetected) {
         return _buildSimpleRedMessageSheet(
           isDark,
-          "This person is not registered in the system",
+          "No face detected",
         );
       }
       return _buildShimmerSheet(isDark);
@@ -884,6 +904,35 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
           const SizedBox(height: 24),
           
           // Action Buttons
+          if (_multipleCheckinsEnabled)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text("Morning"),
+                      selected: _checkInType == 'morning',
+                      onSelected: (selected) {
+                        if (!selected) return;
+                        setState(() => _checkInType = 'morning');
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text("Going Out"),
+                      selected: _checkInType == 'outing',
+                      onSelected: (selected) {
+                        if (!selected) return;
+                        setState(() => _checkInType = 'outing');
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Row(
             children: [
               Expanded(

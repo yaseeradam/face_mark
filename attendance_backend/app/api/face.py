@@ -2,7 +2,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends, Form
 from typing import Optional
 from sqlalchemy.orm import Session
-from ..core.security import require_teacher
+from ..core.security import require_teacher, require_admin
 from ..db.base import get_db
 from ..services.face_service import FaceService
 from ..services.class_service import ClassService
@@ -19,7 +19,7 @@ async def register_face(
     student_id: int = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_teacher)
+    current_user: dict = Depends(require_admin)
 ):
     """Register a face for a student"""
     # Validate file type - be lenient since camera captures may not have proper MIME type
@@ -57,6 +57,7 @@ async def register_face(
 async def verify_face(
     class_id: Optional[int] = Form(None),
     auto_mark: bool = Form(False),
+    check_in_type: str = Form("morning"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_teacher)
@@ -103,13 +104,19 @@ async def verify_face(
                 target_class_id = class_id if class_id else student.class_id
                 
                 # Check status
-                is_marked = crud.check_attendance_exists(db, student_id, target_class_id)
+                is_marked = crud.check_attendance_exists(db, student_id, target_class_id, check_in_type=check_in_type)
                 attendance_marked = is_marked
                 
                 if auto_mark and not is_marked:
                     try:
                         # Mark attendance
-                        await attendance_service.mark_attendance(student_id, target_class_id, confidence_score, db)
+                        await attendance_service.mark_attendance(
+                            student_id,
+                            target_class_id,
+                            confidence_score,
+                            db,
+                            check_in_type=check_in_type
+                        )
                         attendance_marked = True
                         message += " (Attendance marked)"
                     except ValueError as e:

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
+import '../providers/app_providers.dart';
 import '../utils/ui_helpers.dart';
 import 'student_list_screen.dart';
 import 'reports_screen.dart';
@@ -96,6 +97,30 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final user = ref.watch(authProvider).user ?? {};
+    final role = (user['role'] ?? 'teacher').toString();
+    final isAdmin = role == 'admin' || role == 'super_admin';
+
+    if (!isAdmin) {
+      return Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.arrow_back_ios_new),
+            style: IconButton.styleFrom(
+              backgroundColor: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+            ),
+          ),
+          title: const Text("Class Management"),
+        ),
+        body: Center(
+          child: Text(
+            "Access restricted to administrators",
+            style: theme.textTheme.titleMedium,
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(

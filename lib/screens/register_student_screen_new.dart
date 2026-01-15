@@ -1,21 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:camera/camera.dart';
 import 'dart:io';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import '../services/api_service.dart';
+import '../providers/app_providers.dart';
 import '../utils/ui_helpers.dart';
 
-class RegisterStudentScreenNew extends StatefulWidget {
+class RegisterStudentScreenNew extends ConsumerStatefulWidget {
   const RegisterStudentScreenNew({super.key});
 
   @override
-  State<RegisterStudentScreenNew> createState() => _RegisterStudentScreenNewState();
+  ConsumerState<RegisterStudentScreenNew> createState() => _RegisterStudentScreenNewState();
 }
 
 // Liveness challenge types
 enum LivenessChallenge { blink, smile, turnHead }
 
-class _RegisterStudentScreenNewState extends State<RegisterStudentScreenNew> 
+class _RegisterStudentScreenNewState extends ConsumerState<RegisterStudentScreenNew> 
     with TickerProviderStateMixin {
   // Form Controllers
   final _formKey = GlobalKey<FormState>();
@@ -485,7 +487,10 @@ class _RegisterStudentScreenNewState extends State<RegisterStudentScreenNew>
       if (!mounted) return;
       
       if (result['success']) {
-        UIHelpers.showSuccess(context, "Student Registered Successfully! Face embeddings saved.");
+        await _showSuccessModal(
+          studentName: _nameController.text,
+          studentId: _studentIdController.text,
+        );
         if (mounted) Navigator.pop(context, true);
       } else {
         final errorMsg = result['error']?.toString() ?? 'Unknown error';
@@ -498,6 +503,175 @@ class _RegisterStudentScreenNewState extends State<RegisterStudentScreenNew>
     } finally {
       if (mounted) setState(() => _isRegistering = false);
     }
+  }
+  
+  Future<void> _showSuccessModal({
+    required String studentName,
+    required String studentId,
+  }) async {
+    await showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.5),
+      transitionDuration: const Duration(milliseconds: 400),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Container();
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curvedAnimation = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutBack,
+        );
+        
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.5, end: 1.0).animate(curvedAnimation),
+          child: FadeTransition(
+            opacity: animation,
+            child: AlertDialog(
+              backgroundColor: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF1E293B)
+                  : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              contentPadding: const EdgeInsets.all(32),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Animated Checkmark
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 600),
+                    curve: Curves.elasticOut,
+                    builder: (context, value, child) {
+                      return Transform.scale(
+                        scale: value,
+                        child: Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.check_circle_rounded,
+                            color: Color(0xFF10B981),
+                            size: 56,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Title
+                  const Text(
+                    "Registration Successful!",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Subtitle
+                  Text(
+                    "Face data has been saved",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.grey[400]
+                          : Colors.grey[600],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Student Info Card
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white.withOpacity(0.05)
+                          : Colors.grey.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.person_rounded,
+                              color: const Color(0xFF6366F1),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                studentName,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.badge_rounded,
+                              color: const Color(0xFF6366F1),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              "ID: $studentId",
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.grey[400]
+                                    : Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Done Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF6366F1),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        "Done",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
   
   void _retakeScan(int index) {
@@ -605,6 +779,33 @@ class _RegisterStudentScreenNewState extends State<RegisterStudentScreenNew>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final user = ref.watch(authProvider).user ?? {};
+    final role = (user['role'] ?? 'teacher').toString();
+    final isAdmin = role == 'admin' || role == 'super_admin';
+
+    if (!isAdmin) {
+      return Scaffold(
+        appBar: AppBar(
+          backgroundColor: isDark ? const Color(0xFF1E2936) : Colors.white,
+          elevation: 0,
+          title: const Text(
+            "Register Student",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          ),
+          centerTitle: true,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        body: Center(
+          child: Text(
+            "Access restricted to administrators",
+            style: theme.textTheme.titleMedium,
+          ),
+        ),
+      );
+    }
     
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF101922) : const Color(0xFFF6F7F8),

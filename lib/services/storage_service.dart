@@ -82,6 +82,10 @@ class StorageService {
     return _prefs?.getString(key);
   }
 
+  static Future<void> removeString(String key) async {
+    await _prefs?.remove(key);
+  }
+
   // Database operations
   static Future<void> insertStudent(Map<String, dynamic> student) async {
     await _database?.insert('students', student);

@@ -20,7 +20,7 @@ docker rm attendance-backend 2>/dev/null
 echo "▶️ Starting new container..."
 docker run -d \
   --name attendance-backend \
-  -p 8100:8100 \
+  -p 8100:8000 \
   -v /home/ubuntu/apps/attendance_backend/attendance.db:/app/attendance.db \
   --restart unless-stopped \
   attendance-backend

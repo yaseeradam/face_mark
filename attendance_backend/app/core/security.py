@@ -10,7 +10,7 @@ from .config import settings
 # ==================================================
 # 🔧 DEV MODE - Set to True to bypass authentication
 # ==================================================
-DEV_MODE = True  # Set to False in production!
+DEV_MODE = settings.dev_mode
 
 security = HTTPBearer(auto_error=not DEV_MODE)
 
@@ -67,6 +67,14 @@ def require_teacher(current_user: dict = Depends(verify_token)):
     
     if current_user["role"] not in ["admin", "teacher", "super_admin"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher access required")
+    return current_user
+
+def require_admin_or_super_admin(current_user: dict = Depends(verify_token)):
+    if DEV_MODE:
+        return {"user_id": 1, "role": "super_admin"}
+
+    if current_user["role"] not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
 
 def require_super_admin(current_user: dict = Depends(verify_token)):

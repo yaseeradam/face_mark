@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     # App
     app_name: str = "Face Recognition Attendance System"
     debug: bool = False
+    dev_mode: bool = False
     
     # Cloudinary (optional)
     cloudinary_url: Optional[str] = None

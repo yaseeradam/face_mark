@@ -1,5 +1,5 @@
 """Face recognition business logic using InsightFace"""
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 from sqlalchemy.orm import Session
 from ..ai.embedding import generate_embedding, embedding_from_json
 from ..ai.matcher import find_best_match
@@ -87,7 +87,13 @@ class FaceService:
         except Exception as e:
             return False, f"Error registering face: {str(e)}"
     
-    async def verify_face(self, image_data: bytes, db: Session, class_id: Optional[int] = None) -> Tuple[bool, str, Optional[int], Optional[float], Optional[float]]:
+    async def verify_face(
+        self,
+        image_data: bytes,
+        db: Session,
+        class_id: Optional[int] = None,
+        class_ids: Optional[List[int]] = None
+    ) -> Tuple[bool, str, Optional[int], Optional[float], Optional[float]]:
         """Verify a face against enrolled students, optionally filtered by class
         
         Args:
@@ -133,12 +139,15 @@ class FaceService:
             
             # Get face embeddings
             if class_id:
-                print(f"📚 Fetching enrolled faces for class {class_id}...")
+                print(f"[Face] Fetching enrolled faces for class {class_id}...")
                 face_embeddings = crud.get_all_face_embeddings_by_class(db, class_id)
+            elif class_ids:
+                print(f"[Face] Fetching enrolled faces for {len(class_ids)} class(es)...")
+                face_embeddings = crud.get_all_face_embeddings_by_class_ids(db, class_ids)
             else:
-                print(f"📚 Fetching ALL enrolled faces...")
+                print("[Face] Fetching ALL enrolled faces...")
                 face_embeddings = crud.get_all_face_embeddings(db)
-            
+
             if not face_embeddings:
                 print(f"⚠️ No enrolled faces found")
                 return False, "No enrolled faces found", None, None, threshold

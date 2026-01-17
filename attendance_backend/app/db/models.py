@@ -34,6 +34,7 @@ class Teacher(Base):
     # Relationships
     classes = relationship("Class", back_populates="teacher")
     organization = relationship("Organization", back_populates="teachers")
+    face_embedding = relationship("TeacherFaceEmbedding", back_populates="teacher", uselist=False)
 
     @property
     def organization_name(self):
@@ -81,6 +82,18 @@ class FaceEmbedding(Base):
     
     # Relationships
     student = relationship("Student", back_populates="face_embedding")
+
+
+class TeacherFaceEmbedding(Base):
+    __tablename__ = "teacher_face_embeddings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    teacher_id = Column(Integer, ForeignKey("teachers.id"), unique=True, nullable=False)
+    embedding = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    teacher = relationship("Teacher", back_populates="face_embedding")
 
 class Attendance(Base):
     __tablename__ = "attendance"

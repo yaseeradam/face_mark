@@ -110,6 +110,9 @@ async def get_student_report(
         student = crud.get_student_by_id(db, student_id)
         if not student:
             raise HTTPException(status_code=404, detail="Student not found")
+        has_access = await class_service.check_teacher_access(student.class_id, current_user["user_id"], db)
+        if not has_access:
+            raise HTTPException(status_code=403, detail="Access denied")
         
         # Parse dates
         start = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else date.today() - timedelta(days=30)

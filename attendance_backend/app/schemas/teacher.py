@@ -30,6 +30,7 @@ class TeacherResponse(BaseModel):
     status: Optional[str] = "active"
     organization_id: Optional[int] = None
     organization_name: Optional[str] = None
+    has_face_id: Optional[bool] = None
     created_at: datetime
     
     class Config:

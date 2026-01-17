@@ -8,6 +8,8 @@ import '../widgets/common_widgets.dart';
 import '../utils/ui_helpers.dart';
 import '../theme/app_theme.dart';
 import '../services/storage_service.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -521,7 +523,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   Widget _buildFaceIdButton(BuildContext context, bool isDark) {
     return OutlinedButton(
-      onPressed: () {},
+      onPressed: () async {
+        final picker = ImagePicker();
+        final XFile? photo = await picker.pickImage(
+          source: ImageSource.camera,
+          preferredCameraDevice: CameraDevice.front,
+          imageQuality: 85,
+        );
+        if (photo == null) return;
+
+        if (!mounted) return;
+        setState(() => _isLoading = true);
+        final result = await ApiService.faceLogin(File(photo.path));
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+
+        if (result['success']) {
+          final data = Map<String, dynamic>.from(result['data'] ?? {});
+          final user = Map<String, dynamic>.from(data['teacher'] ?? {});
+          final token = data['access_token'];
+          if (token != null) {
+            ApiService.setToken(token);
+            await StorageService.saveToken(token);
+            await StorageService.saveString('user_profile', jsonEncode(user));
+            ref.read(authProvider.notifier).login(token, user);
+            if (mounted) {
+              Navigator.pushReplacementNamed(context, '/dashboard');
+            }
+          } else {
+            UIHelpers.showError(context, 'Face login failed');
+          }
+        } else {
+          UIHelpers.showError(context, result['error'] ?? 'Face login failed');
+        }
+      },
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(

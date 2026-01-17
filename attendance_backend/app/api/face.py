@@ -22,6 +22,15 @@ async def register_face(
     current_user: dict = Depends(require_admin)
 ):
     """Register a face for a student"""
+    # Ensure admin has access to the student's class (org isolation)
+    from ..db import crud
+    student = crud.get_student_by_id(db, student_id)
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
+    has_access = await class_service.check_teacher_access(student.class_id, current_user["user_id"], db)
+    if not has_access:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this student")
+
     # Validate file type - be lenient since camera captures may not have proper MIME type
     allowed_extensions = ['.jpg', '.jpeg', '.png', '.webp']
     is_image_type = file.content_type and file.content_type.startswith('image/')
@@ -68,6 +77,10 @@ async def verify_face(
         has_access = await class_service.check_teacher_access(class_id, current_user["user_id"], db)
         if not has_access:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this class")
+    elif current_user["role"] != "super_admin":
+        accessible_classes = await class_service.get_accessible_classes(current_user, db)
+        if not accessible_classes:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No accessible classes")
     
     # Validate file type - be lenient since camera captures may not have proper MIME type
     allowed_extensions = ['.jpg', '.jpeg', '.png', '.webp']
@@ -86,7 +99,16 @@ async def verify_face(
         image_data = await file.read()
         
         # Verify face
-        success, message, student_id, confidence_score, threshold = await face_service.verify_face(image_data, db, class_id)
+        class_ids = None
+        if not class_id and current_user["role"] != "super_admin":
+            class_ids = [cls.id for cls in accessible_classes]
+
+        success, message, student_id, confidence_score, threshold = await face_service.verify_face(
+            image_data,
+            db,
+            class_id=class_id,
+            class_ids=class_ids
+        )
         
         attendance_marked = False
         student_name = None

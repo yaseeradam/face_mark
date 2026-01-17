@@ -31,7 +31,8 @@ async def get_dashboard_stats(
             teachers = crud.get_teachers(db)
         elif current_user["role"] == "admin":
             current_teacher = crud.get_teacher_by_id(db, current_user["user_id"])
-            teachers = crud.get_teachers(db, org_id=current_teacher.organization_id if current_teacher else None)
+            if current_teacher and current_teacher.organization_id is not None:
+                teachers = crud.get_teachers(db, org_id=current_teacher.organization_id)
         
         # Today's attendance
         today = date.today()

@@ -6,11 +6,13 @@ from ..core.security import require_admin, require_teacher, get_password_hash, v
 from ..db.base import get_db
 from ..db import crud
 from ..services.teacher_service import TeacherService
+from ..services.teacher_face_service import TeacherFaceService
 from ..schemas.teacher import TeacherCreate, TeacherResponse, TeacherUpdate
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/teachers", tags=["teachers"])
 teacher_service = TeacherService()
+teacher_face_service = TeacherFaceService()
 
 class ChangePasswordRequest(BaseModel):
     old_password: str
@@ -29,6 +31,7 @@ async def get_current_user_profile(
         if not teacher:
             raise HTTPException(status_code=404, detail="User not found")
         
+        face_embedding = crud.get_teacher_face_embedding(db, teacher.id)
         return {
             "id": teacher.id,
             "teacher_id": teacher.teacher_id,
@@ -38,7 +41,8 @@ async def get_current_user_profile(
             "status": getattr(teacher, 'status', 'active'),
             "organization_id": teacher.organization_id,
             "organization_name": teacher.organization.name if teacher.organization else None,
-            "created_at": teacher.created_at.isoformat() if teacher.created_at else None
+            "created_at": teacher.created_at.isoformat() if teacher.created_at else None,
+            "has_face_id": face_embedding is not None
         }
     except HTTPException:
         raise
@@ -81,15 +85,18 @@ async def setup_face_id(
 ):
     """Set up face ID for teacher login"""
     try:
-        if not file.content_type.startswith('image/'):
+        allowed_extensions = ['.jpg', '.jpeg', '.png', '.webp']
+        is_image_type = file.content_type and file.content_type.startswith('image/')
+        has_image_ext = any(file.filename.lower().endswith(ext) for ext in allowed_extensions) if file.filename else False
+        is_octet_stream = file.content_type == 'application/octet-stream'
+        if not (is_image_type or has_image_ext or is_octet_stream):
             raise HTTPException(status_code=400, detail="File must be an image")
         
-        # Read image
         image_data = await file.read()
-        
-        # TODO: Implement teacher face registration
-        # For now, just return success
-        return {"success": True, "message": "Face ID setup successful"}
+        success, message = await teacher_face_service.register_face_id(image_data, current_user["user_id"], db)
+        if not success:
+            raise HTTPException(status_code=400, detail=message)
+        return {"success": True, "message": message}
     except HTTPException:
         raise
     except Exception as e:
@@ -107,6 +114,8 @@ async def create_teacher(
     """Create a new teacher (Admin only)"""
     try:
         current_teacher = crud.get_teacher_by_id(db, current_user["user_id"])
+        if current_user["role"] != "super_admin" and (not current_teacher or current_teacher.organization_id is None):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization not set for user")
         teacher_dict = teacher_data.model_dump()
 
         if current_user["role"] != "super_admin":
@@ -129,6 +138,8 @@ async def get_teachers(
     org_id = None
     if current_user["role"] != "super_admin":
         current_teacher = crud.get_teacher_by_id(db, current_user["user_id"])
+        if not current_teacher or current_teacher.organization_id is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization not set for user")
         org_id = current_teacher.organization_id if current_teacher else None
 
     teachers = await teacher_service.get_teachers(db, org_id=org_id)
@@ -146,6 +157,8 @@ async def get_teacher(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
     if current_user["role"] != "super_admin":
         current_teacher = crud.get_teacher_by_id(db, current_user["user_id"])
+        if not current_teacher or current_teacher.organization_id is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization not set for user")
         if current_teacher and teacher.organization_id != current_teacher.organization_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     return TeacherResponse.model_validate(teacher)
@@ -164,6 +177,8 @@ async def update_teacher(
             target = crud.get_teacher_by_id(db, teacher_id)
             if not target:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
+            if not current_teacher or current_teacher.organization_id is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization not set for user")
             if current_teacher and target.organization_id != current_teacher.organization_id:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
             if teacher_data.get("role") == "super_admin":
@@ -190,6 +205,8 @@ async def delete_teacher(
             target = crud.get_teacher_by_id(db, teacher_id)
             if not target:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
+            if not current_teacher or current_teacher.organization_id is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization not set for user")
             if current_teacher and target.organization_id != current_teacher.organization_id:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
@@ -215,6 +232,8 @@ async def bulk_delete_teachers(
         if current_user["role"] != "super_admin":
             current_teacher = crud.get_teacher_by_id(db, current_user["user_id"])
             org_id = current_teacher.organization_id if current_teacher else None
+            if org_id is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization not set for user")
             teacher_ids = [
                 t_id for t_id in teacher_ids
                 if (crud.get_teacher_by_id(db, t_id) and crud.get_teacher_by_id(db, t_id).organization_id == org_id)
@@ -242,6 +261,8 @@ async def export_teachers_csv(
     org_id = None
     if current_user["role"] != "super_admin":
         current_teacher = crud.get_teacher_by_id(db, current_user["user_id"])
+        if not current_teacher or current_teacher.organization_id is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization not set for user")
         org_id = current_teacher.organization_id if current_teacher else None
     teachers = await teacher_service.get_teachers(db, org_id=org_id)
     

@@ -140,6 +140,16 @@ class ApiService {
   }
 
   // Auth endpoints
+
+  static Future<Map<String, dynamic>> faceLogin(File imageFile) async {
+    return await _makeRequest(
+      'POST',
+      '/auth/face-login',
+      file: imageFile,
+      retryOnAuth: false,
+    );
+  }
+
   static Future<Map<String, dynamic>> login(String email, String password) async {
     // Skip token refresh on 401 for login since there's no valid token yet
     final identifier = email.trim();

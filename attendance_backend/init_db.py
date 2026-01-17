@@ -16,7 +16,7 @@ async def init_db():
     Base.metadata.create_all(bind=engine)
     print("Database tables created successfully!")
     
-    # Create admin user
+    # Create super admin user
     db = SessionLocal()
     try:
         service = TeacherService()
@@ -34,14 +34,14 @@ async def init_db():
             full_name="System Administrator",
             email="admin@school.com",
             password="admin123",  # Change this in production!
-            role="admin"
+            role="super_admin"
         )
         
         admin_user = await service.create_teacher(admin_data, db)
-        print(f"Admin user created successfully!")
+        print(f"Super admin user created successfully!")
         print(f"Email: admin@school.com")
         print(f"Password: admin123")
-        print("⚠️  IMPORTANT: Change the admin password in production!")
+        print("IMPORTANT: Change the admin password in production!")
         
     except Exception as e:
         print(f"Error creating admin user: {e}")

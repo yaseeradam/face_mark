@@ -73,7 +73,7 @@ def get_teacher_by_id(db: Session, teacher_id: int) -> Optional[models.Teacher]:
 
 def get_teachers(db: Session, skip: int = 0, limit: int = 100, org_id: Optional[int] = None) -> List[models.Teacher]:
     query = db.query(models.Teacher)
-    if org_id:
+    if org_id is not None:
         query = query.filter(models.Teacher.organization_id == org_id)
     return query.offset(skip).limit(limit).all()
 
@@ -96,9 +96,9 @@ def get_class_by_id(db: Session, class_id: int) -> Optional[models.Class]:
 
 def get_classes(db: Session, teacher_id: Optional[int] = None, org_id: Optional[int] = None) -> List[models.Class]:
     query = db.query(models.Class)
-    if teacher_id:
+    if teacher_id is not None:
         query = query.filter(models.Class.teacher_id == teacher_id)
-    if org_id:
+    if org_id is not None:
         query = query.filter(models.Class.organization_id == org_id)
     return query.all()
 
@@ -221,6 +221,11 @@ def get_face_embedding(db: Session, student_id: int) -> Optional[models.FaceEmbe
 def get_all_face_embeddings_by_class(db: Session, class_id: int) -> List[models.FaceEmbedding]:
     return db.query(models.FaceEmbedding).join(models.Student).filter(
         models.Student.class_id == class_id
+    ).all()
+
+def get_all_face_embeddings_by_class_ids(db: Session, class_ids: List[int]) -> List[models.FaceEmbedding]:
+    return db.query(models.FaceEmbedding).join(models.Student).filter(
+        models.Student.class_id.in_(class_ids)
     ).all()
 
 def get_all_face_embeddings(db: Session) -> List[models.FaceEmbedding]:
@@ -387,3 +392,23 @@ def get_attendance_by_student(db: Session, student_id: int, start_date: date = N
         query = query.filter(models.Attendance.marked_at <= end_ts)
         
     return query.all()
+
+# Teacher Face Embedding CRUD
+
+def create_teacher_face_embedding(db: Session, teacher_id: int, embedding: str) -> models.TeacherFaceEmbedding:
+    db.query(models.TeacherFaceEmbedding).filter(models.TeacherFaceEmbedding.teacher_id == teacher_id).delete()
+    db_embedding = models.TeacherFaceEmbedding(
+        teacher_id=teacher_id,
+        embedding=embedding
+    )
+    db.add(db_embedding)
+    db.commit()
+    db.refresh(db_embedding)
+    return db_embedding
+
+def get_teacher_face_embedding(db: Session, teacher_id: int) -> Optional[models.TeacherFaceEmbedding]:
+    return db.query(models.TeacherFaceEmbedding).filter(models.TeacherFaceEmbedding.teacher_id == teacher_id).first()
+
+def get_all_teacher_face_embeddings(db: Session) -> List[models.TeacherFaceEmbedding]:
+    return db.query(models.TeacherFaceEmbedding).all()
+

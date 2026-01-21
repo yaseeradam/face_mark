@@ -463,7 +463,20 @@ class ApiService {
 
   static Future<Map<String, dynamic>> exportAttendanceCSV(DateTime date) async {
     final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-    return await _makeRequest('GET', '/attendance/export/csv?date=$dateStr');
+    try {
+      if (!await _hasConnection()) {
+        return {'success': false, 'error': 'No internet connection'};
+      }
+      final uri = Uri.parse('$baseUrl/attendance/export/csv?date=$dateStr');
+      final headers = await _getHeaders();
+      final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 30));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return {'success': true, 'data': response.body};
+      }
+      return {'success': false, 'error': 'Failed to export CSV', 'status_code': response.statusCode};
+    } catch (e) {
+      return {'success': false, 'error': 'Connection error: ${e.toString()}'};
+    }
   }
 
   // Dashboard & Statistics endpoints
@@ -491,7 +504,7 @@ class ApiService {
     return await _makeRequest('GET', endpoint);
   }
 
-  static Future<Map<String, dynamic>> getStudentReport(int studentId, {String? startDate, String? endDate}) async {
+  static Future<Map<String, dynamic>> getStudentReport(String studentId, {String? startDate, String? endDate}) async {
     String endpoint = '/reports/student/$studentId';
     List<String> params = [];
     if (startDate != null) params.add('start_date=$startDate');

@@ -33,14 +33,13 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
     setState(() => _isLoadingStats = true);
     try {
       // Fetch last 30 days by default
-      final result = await ApiService.getStudentReport(
-        _student['id'],
-      );
+      final studentKey = (_student['student_id'] ?? _student['id']).toString();
+      final result = await ApiService.getStudentReport(studentKey);
       
       if (mounted) {
         if (result['success'] == true && result['data'] != null) {
           setState(() {
-            _stats = Map<String, dynamic>.from(result['data']);
+            _stats = _resolveStatsData(result['data']);
           });
         }
       }
@@ -127,6 +126,140 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
     }
   }
 
+  Future<void> _showEditStudentDialog() async {
+    final nameController = TextEditingController(text: _student['full_name'] ?? '');
+    final studentIdController = TextEditingController(text: _student['student_id'] ?? '');
+    int? selectedClassId = _student['class_id'];
+    List<Map<String, dynamic>> classes = [];
+
+    final classesResult = await ApiService.getClasses();
+    if (classesResult['success'] == true && classesResult['data'] != null) {
+      classes = List<Map<String, dynamic>>.from(classesResult['data']);
+    }
+
+    if (!mounted) return;
+
+    final formKey = GlobalKey<FormState>();
+    bool isSaving = false;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit Student'),
+              content: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: studentIdController,
+                        decoration: const InputDecoration(
+                          labelText: 'Student ID',
+                        ),
+                        validator: (value) =>
+                            value == null || value.trim().isEmpty ? 'Student ID is required' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: nameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Full Name',
+                        ),
+                        validator: (value) =>
+                            value == null || value.trim().isEmpty ? 'Full name is required' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      if (classes.isNotEmpty)
+                        DropdownButtonFormField<int>(
+                          value: selectedClassId,
+                          decoration: const InputDecoration(
+                            labelText: 'Class',
+                          ),
+                          items: classes
+                              .map(
+                                (c) => DropdownMenuItem<int>(
+                                  value: c['id'],
+                                  child: Text(c['class_name'] ?? c['name'] ?? 'Class'),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) => setDialogState(() => selectedClassId = value),
+                          validator: (value) => value == null ? 'Please select a class' : null,
+                        )
+                      else
+                        Text(
+                          'No classes available',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          if (!formKey.currentState!.validate()) return;
+                          setDialogState(() => isSaving = true);
+                          final result = await ApiService.updateStudent(_student['id'], {
+                            'student_id': studentIdController.text.trim(),
+                            'full_name': nameController.text.trim(),
+                            'class_id': selectedClassId,
+                          });
+                          setDialogState(() => isSaving = false);
+                          if (!mounted) return;
+                          if (result['success'] == true) {
+                            final className = classes.firstWhere(
+                              (c) => c['id'] == selectedClassId,
+                              orElse: () => {},
+                            )['class_name'];
+                            setState(() {
+                              _student['student_id'] = studentIdController.text.trim();
+                              _student['full_name'] = nameController.text.trim();
+                              _student['class_id'] = selectedClassId;
+                              if (className != null) _student['class_name'] = className;
+                            });
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Student updated successfully'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(result['error'] ?? 'Failed to update student'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -151,6 +284,14 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
         ),
         title: const Text("Student Profile"),
         centerTitle: true,
+        actions: [
+          IconButton(
+            onPressed: _isLoadingStats ? null : _fetchStats,
+            icon: _isLoadingStats
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.refresh),
+          ),
+        ],
       ),
       body: _isLoading 
           ? const Center(child: CircularProgressIndicator())
@@ -206,7 +347,6 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
                   
                   const SizedBox(height: 32),
                   
-                  // Stats Row (Mock values for now as backend doesn't return them yet)
                   // Stats Row
                   if (_isLoadingStats)
                     const Padding(
@@ -218,9 +358,24 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Row(
                         children: [
-                          _buildStatItem(context, "${_stats['attendance_rate'] ?? 0}%", "Attendance", Colors.blue),
-                          _buildStatItem(context, "${_stats['days_present'] ?? 0}", "Present", Colors.green),
-                          _buildStatItem(context, "${_stats['days_absent'] ?? 0}", "Absent", Colors.red),
+                          _buildStatItem(
+                            context,
+                            "${_formatAttendanceRate(_stats)}%",
+                            "Attendance",
+                            Colors.blue,
+                          ),
+                          _buildStatItem(
+                            context,
+                            "${_asInt(_stats['days_present'] ?? _stats['present_days'] ?? _stats['present'])}",
+                            "Present",
+                            Colors.green,
+                          ),
+                          _buildStatItem(
+                            context,
+                            "${_asInt(_stats['days_absent'] ?? _stats['absent_days'] ?? _stats['absent'])}",
+                            "Absent",
+                            Colors.red,
+                          ),
                         ],
                       ),
                     ),
@@ -260,11 +415,7 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
                             children: [
                               Expanded(
                                 child: OutlinedButton.icon(
-                                  onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Edit feature coming soon!')),
-                                    );
-                                  },
+                                  onPressed: _showEditStudentDialog,
                                   icon: const Icon(Icons.edit),
                                   label: const Text("Edit Profile"),
                                   style: OutlinedButton.styleFrom(
@@ -357,6 +508,74 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
         ),
       ],
     );
+  }
+
+  Map<String, dynamic> _resolveStatsData(dynamic raw) {
+    if (raw is Map<String, dynamic>) {
+      final inner = raw['summary'] ?? raw['stats'] ?? raw['report'] ?? raw['data'];
+      if (inner is Map<String, dynamic>) return inner;
+      final listSource = raw['records'] ?? raw['attendance'] ?? raw['entries'];
+      if (listSource is List) return _resolveStatsData(listSource);
+      return raw;
+    }
+    if (raw is List) {
+      int present = 0;
+      int absent = 0;
+      for (final entry in raw) {
+        if (entry is Map<String, dynamic>) {
+          final status = entry['status']?.toString().toLowerCase();
+          final isPresent = entry['present'] == true || entry['is_present'] == true;
+          if (status == 'present' || isPresent) {
+            present++;
+          } else if (status == 'absent') {
+            absent++;
+          }
+        }
+      }
+      final total = present + absent;
+      final rate = total > 0 ? (present / total) * 100 : 0.0;
+      return {
+        'days_present': present,
+        'days_absent': absent,
+        'attendance_rate': rate,
+        'total_days': total,
+      };
+    }
+    return {};
+  }
+
+  int _asInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
+
+  double _asDouble(dynamic value) {
+    if (value == null) return 0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) {
+      final cleaned = value.replaceAll('%', '').trim();
+      return double.tryParse(cleaned) ?? 0;
+    }
+    return 0;
+  }
+
+  String _formatAttendanceRate(Map<String, dynamic> stats) {
+    final present = _asInt(stats['days_present'] ?? stats['present_days'] ?? stats['present']);
+    final absent = _asInt(stats['days_absent'] ?? stats['absent_days'] ?? stats['absent']);
+    int total = _asInt(stats['total_days'] ?? stats['total'] ?? stats['total_records'] ?? stats['total_attendance']);
+    if (total == 0) total = present + absent;
+    double rate = _asDouble(stats['attendance_rate']);
+    if (rate == 0 && total > 0) {
+      rate = (present / total) * 100;
+    }
+    if (rate > 0 && rate <= 1) {
+      rate *= 100;
+    }
+    return rate.toStringAsFixed(0);
   }
 }
 

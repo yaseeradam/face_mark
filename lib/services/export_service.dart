@@ -78,4 +78,12 @@ class ExportService {
     final filename = 'student_list_${DateFormat('yyyyMMdd').format(DateTime.now())}';
     return await exportToCSV(studentData, filename);
   }
+
+  static Future<File> saveCsvString(String csvData, String filename) async {
+    if (csvData.trim().isEmpty) throw Exception('No data to export');
+    final directory = await getApplicationDocumentsDirectory();
+    final file = File('${directory.path}/$filename.csv');
+    await file.writeAsString(csvData);
+    return file;
+  }
 }

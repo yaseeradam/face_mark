@@ -67,13 +67,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
     try {
       final statsResult = await ApiService.getDashboardStats();
-      if (statsResult['success']) {
-        final data = statsResult['data'] as Map<String, dynamic>? ?? {};
-        _totalStudents = data['total_students'] ?? 0;
-        _totalClasses = data['total_classes'] ?? 0;
-        _totalTeachers = data['total_teachers'] ?? 0;
-        _presentToday = data['present_today'] ?? 0;
-        _attendanceRate = (data['attendance_rate'] ?? 0).toDouble();
+      if (statsResult['success'] && mounted) {
+        final data = _resolveStatsData(statsResult['data']);
+        final totalStudents = _asInt(data['total_students']);
+        final totalClasses = _asInt(data['total_classes']);
+        final totalTeachers = _asInt(data['total_teachers']);
+        final presentToday = _asInt(
+          data['present_today'] ?? data['present_students'] ?? data['present'],
+        );
+        final attendanceRate = _normalizeAttendanceRate(
+          data['attendance_rate'] ?? data['attendance_percent'],
+          presentToday,
+          totalStudents,
+        );
+        setState(() {
+          _totalStudents = totalStudents;
+          _totalClasses = totalClasses;
+          _totalTeachers = totalTeachers;
+          _presentToday = presentToday;
+          _attendanceRate = attendanceRate;
+          _isLoading = false;
+        });
+        _animationController.forward(from: 0);
+        return;
       }
     } catch (e) {
       // Handle errors silently
@@ -666,5 +682,44 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         ),
       ),
     );
+  }
+
+  Map<String, dynamic> _resolveStatsData(dynamic raw) {
+    if (raw is Map<String, dynamic>) {
+      final inner = raw['data'];
+      if (inner is Map<String, dynamic>) return inner;
+      return raw;
+    }
+    return {};
+  }
+
+  int _asInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
+
+  double _asDouble(dynamic value) {
+    if (value == null) return 0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) {
+      final cleaned = value.replaceAll('%', '').trim();
+      return double.tryParse(cleaned) ?? 0;
+    }
+    return 0;
+  }
+
+  double _normalizeAttendanceRate(dynamic value, int present, int total) {
+    double rate = _asDouble(value);
+    if (rate == 0 && total > 0) {
+      rate = (present / total) * 100;
+    }
+    if (rate > 0 && rate <= 1) {
+      rate *= 100;
+    }
+    return rate;
   }
 }

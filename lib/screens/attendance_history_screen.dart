@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
+import '../services/export_service.dart';
 import 'package:intl/intl.dart';
 
 class AttendanceHistoryScreen extends ConsumerStatefulWidget {
@@ -38,12 +39,30 @@ class _AttendanceHistoryScreenState extends ConsumerState<AttendanceHistoryScree
   Future<void> _exportAttendance() async {
     final result = await ApiService.exportAttendanceCSV(_selectedDate);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['success'] ? 'Attendance exported successfully!' : result['error'] ?? 'Failed to export'),
-          backgroundColor: result['success'] ? Colors.green : Colors.red,
-        ),
-      );
+      if (result['success'] == true && result['data'] is String) {
+        final file = await ExportService.saveCsvString(
+          result['data'] as String,
+          'attendance_history_${DateFormat('yyyyMMdd').format(_selectedDate)}',
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Report saved: ${file.path}'), backgroundColor: Colors.green),
+        );
+      } else if (_attendanceRecords.isNotEmpty) {
+        final file = await ExportService.exportToCSV(
+          _attendanceRecords,
+          'attendance_history_${DateFormat('yyyyMMdd').format(_selectedDate)}',
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Report saved: ${file.path}'), backgroundColor: Colors.green),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['error'] ?? 'Failed to export'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

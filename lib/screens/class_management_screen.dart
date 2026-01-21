@@ -15,6 +15,7 @@ class ClassManagementScreen extends ConsumerStatefulWidget {
 
 class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
   List<Map<String, dynamic>> _classes = [];
+  List<Map<String, dynamic>> _teachers = [];
   bool _isLoading = true;
   String _searchQuery = '';
 
@@ -22,6 +23,7 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
   void initState() {
     super.initState();
     _loadClasses();
+    _loadTeachers();
   }
 
   Future<void> _loadClasses() async {
@@ -42,6 +44,16 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
     }
   }
 
+  Future<void> _loadTeachers() async {
+    final result = await ApiService.getTeachers();
+    if (!mounted) return;
+    if (result['success']) {
+      setState(() {
+        _teachers = List<Map<String, dynamic>>.from(result['data'] ?? []);
+      });
+    }
+  }
+
   List<Map<String, dynamic>> get _filteredClasses {
     if (_searchQuery.isEmpty) return _classes;
     return _classes.where((cls) {
@@ -51,8 +63,13 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
     }).toList();
   }
 
-  Future<void> _createClass(String name, String code) async {
-    final result = await ApiService.createClass({'class_name': name, 'class_code': code});
+  Future<void> _createClass(String name, String code, int? teacherId) async {
+    final payload = {
+      'class_name': name,
+      'class_code': code,
+      if (teacherId != null) 'teacher_id': teacherId,
+    };
+    final result = await ApiService.createClass(payload);
     if (!mounted) return;
     
     if (result['success']) {
@@ -315,49 +332,73 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final nameController = TextEditingController();
     final codeController = TextEditingController();
+    int? selectedTeacherId;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Create New Class"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: InputDecoration(
-                labelText: "Class Name",
-                hintText: "e.g., Computer Science 101",
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                filled: true,
-                fillColor: isDark ? const Color(0xFF1A2633) : Colors.white,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text("Create New Class"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: InputDecoration(
+                  labelText: "Class Name",
+                  hintText: "e.g., Computer Science 101",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF1A2633) : Colors.white,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: codeController,
-              decoration: InputDecoration(
-                labelText: "Class Code",
-                hintText: "e.g., CS101",
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                filled: true,
-                fillColor: isDark ? const Color(0xFF1A2633) : Colors.white,
+              const SizedBox(height: 16),
+              TextField(
+                controller: codeController,
+                decoration: InputDecoration(
+                  labelText: "Class Code",
+                  hintText: "e.g., CS101",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF1A2633) : Colors.white,
+                ),
               ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<int?>(
+                value: selectedTeacherId,
+                decoration: InputDecoration(
+                  labelText: "Assign Teacher",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF1A2633) : Colors.white,
+                ),
+                items: [
+                  const DropdownMenuItem<int?>(
+                    value: null,
+                    child: Text('Unassigned'),
+                  ),
+                  ..._teachers.map((t) => DropdownMenuItem<int?>(
+                        value: t['id'],
+                        child: Text(t['full_name'] ?? t['name'] ?? 'Teacher'),
+                      )),
+                ],
+                onChanged: (value) => setDialogState(() => selectedTeacherId = value),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+            FilledButton(
+              onPressed: () {
+                if (nameController.text.isNotEmpty && codeController.text.isNotEmpty) {
+                  Navigator.pop(context);
+                  _createClass(nameController.text, codeController.text, selectedTeacherId);
+                }
+              },
+              child: const Text("Create"),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          FilledButton(
-            onPressed: () {
-              if (nameController.text.isNotEmpty && codeController.text.isNotEmpty) {
-                Navigator.pop(context);
-                _createClass(nameController.text, codeController.text);
-              }
-            },
-            child: const Text("Create"),
-          ),
-        ],
       ),
     );
   }
@@ -367,61 +408,86 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final nameController = TextEditingController(text: (cls['class_name'] ?? '').toString());
     final codeController = TextEditingController(text: (cls['class_code'] ?? '').toString());
+    int? selectedTeacherId = cls['teacher_id'];
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Edit Class"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: InputDecoration(
-                labelText: "Class Name",
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                filled: true,
-                fillColor: isDark ? const Color(0xFF1A2633) : Colors.white,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text("Edit Class"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: InputDecoration(
+                  labelText: "Class Name",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF1A2633) : Colors.white,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: codeController,
-              decoration: InputDecoration(
-                labelText: "Class Code",
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                filled: true,
-                fillColor: isDark ? const Color(0xFF1A2633) : Colors.white,
+              const SizedBox(height: 16),
+              TextField(
+                controller: codeController,
+                decoration: InputDecoration(
+                  labelText: "Class Code",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF1A2633) : Colors.white,
+                ),
               ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<int?>(
+                value: selectedTeacherId,
+                decoration: InputDecoration(
+                  labelText: "Assign Teacher",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF1A2633) : Colors.white,
+                ),
+                items: [
+                  const DropdownMenuItem<int?>(
+                    value: null,
+                    child: Text('Unassigned'),
+                  ),
+                  ..._teachers.map((t) => DropdownMenuItem<int?>(
+                        value: t['id'],
+                        child: Text(t['full_name'] ?? t['name'] ?? 'Teacher'),
+                      )),
+                ],
+                onChanged: (value) => setDialogState(() => selectedTeacherId = value),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+            FilledButton(
+              onPressed: () async {
+                if (nameController.text.isEmpty || codeController.text.isEmpty) return;
+                Navigator.pop(context);
+
+                final result = await ApiService.updateClass(
+                  cls['id'],
+                  {
+                    'class_name': nameController.text,
+                    'class_code': codeController.text,
+                    'teacher_id': selectedTeacherId,
+                  },
+                );
+
+                if (!mounted) return;
+                if (result['success']) {
+                  UIHelpers.showSuccess(context, 'Class updated');
+                  _loadClasses();
+                } else {
+                  UIHelpers.showError(context, result['error'] ?? 'Failed to update class');
+                }
+              },
+              child: const Text("Save"),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          FilledButton(
-            onPressed: () async {
-              if (nameController.text.isEmpty || codeController.text.isEmpty) return;
-              Navigator.pop(context);
-
-              final result = await ApiService.updateClass(
-                cls['id'],
-                {
-                  'class_name': nameController.text,
-                  'class_code': codeController.text,
-                },
-              );
-
-              if (!mounted) return;
-              if (result['success']) {
-                UIHelpers.showSuccess(context, 'Class updated');
-                _loadClasses();
-              } else {
-                UIHelpers.showError(context, result['error'] ?? 'Failed to update class');
-              }
-            },
-            child: const Text("Save"),
-          ),
-        ],
       ),
     );
   }

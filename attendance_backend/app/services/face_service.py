@@ -8,6 +8,7 @@ from ..utils.image_utils import preprocess_image, validate_image_format, resize_
 import numpy as np
 import os
 import uuid
+import time
 
 # Directory to save student photos
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads", "students")
@@ -16,6 +17,46 @@ class FaceService:
     def __init__(self):
         # Ensure upload directory exists
         os.makedirs(UPLOAD_DIR, exist_ok=True)
+        self._candidate_cache = {}
+        self._candidate_cache_ttl_seconds = 120
+        self._embedding_vector_cache = {}
+
+    def _invalidate_candidate_cache(self) -> None:
+        self._candidate_cache.clear()
+        self._embedding_vector_cache.clear()
+
+    def _cache_key(self, class_id: Optional[int], class_ids: Optional[List[int]]) -> tuple:
+        if class_id:
+            return ("class", int(class_id))
+        if class_ids:
+            return ("classes", tuple(sorted(int(x) for x in class_ids)))
+        return ("all", None)
+
+    def _get_candidates_cached(
+        self,
+        db: Session,
+        class_id: Optional[int] = None,
+        class_ids: Optional[List[int]] = None,
+    ):
+        key = self._cache_key(class_id, class_ids)
+        now = time.time()
+        entry = self._candidate_cache.get(key)
+        if entry and (now - entry["loaded_at"]) < self._candidate_cache_ttl_seconds:
+            return entry["candidates"]
+
+        if class_id:
+            face_embeddings = crud.get_all_face_embeddings_by_class(db, class_id)
+        elif class_ids:
+            face_embeddings = crud.get_all_face_embeddings_by_class_ids(db, class_ids)
+        else:
+            face_embeddings = crud.get_all_face_embeddings(db)
+
+        candidates = []
+        for face_embed in face_embeddings or []:
+            candidates.append((face_embed.student_id, embedding_from_json(face_embed.embedding)))
+
+        self._candidate_cache[key] = {"loaded_at": now, "candidates": candidates}
+        return candidates
     
     async def register_face(self, image_data: bytes, student_id: int, db: Session) -> Tuple[bool, str]:
         """Register a face for a student
@@ -81,6 +122,9 @@ class FaceService:
             
             # Update student face_enrolled status and photo_path
             crud.update_student_face_enrolled(db, student_id, True, photo_path=f"students/{photo_filename}")
+
+            # Ensure newly registered faces are immediately searchable
+            self._invalidate_candidate_cache()
             
             return True, "Face registered successfully"
             
@@ -157,7 +201,17 @@ class FaceService:
             # Prepare candidate embeddings
             candidates = []
             for face_embed in face_embeddings:
-                candidate_embedding = embedding_from_json(face_embed.embedding)
+                cache_key = face_embed.student_id
+                cached = self._embedding_vector_cache.get(cache_key)
+                updated_at = getattr(face_embed, "updated_at", None)
+                if cached and cached.get("updated_at") == updated_at:
+                    candidate_embedding = cached["vector"]
+                else:
+                    candidate_embedding = embedding_from_json(face_embed.embedding)
+                    self._embedding_vector_cache[cache_key] = {
+                        "updated_at": updated_at,
+                        "vector": candidate_embedding,
+                    }
                 candidates.append((face_embed.student_id, candidate_embedding))
             
             # Find best match

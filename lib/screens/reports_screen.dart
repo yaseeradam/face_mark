@@ -4,6 +4,15 @@ import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../services/export_service.dart';
 
+DateTimeRange _defaultReportRange() {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  return DateTimeRange(
+    start: today.subtract(const Duration(days: 29)),
+    end: today,
+  );
+}
+
 class ReportsScreen extends ConsumerStatefulWidget {
   final int? initialClassId;
   final String? initialClassName;
@@ -20,7 +29,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   List<Map<String, dynamic>> _classes = [];
   int? _selectedClassId;
   DateTime _selectedDate = DateTime.now();
-  late DateTimeRange _reportRange;
+  DateTimeRange _reportRange = _defaultReportRange();
 
   Map<String, dynamic> _stats = {
     'present': 0,

@@ -11,6 +11,20 @@ class ApiService {
   static const String baseUrl = 'http://13.51.55.238:8100'; // Network connection
   static String? _token;
 
+  static String? uploadsUrl(String? relativePath) {
+    final raw = relativePath?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+
+    final normalized = raw.replaceAll('\\', '/').replaceAll(RegExp(r'^/+'), '');
+    final segments = <String>[
+      'uploads',
+      ...normalized.split('/').where((s) => s.trim().isNotEmpty),
+    ];
+
+    return Uri.parse(baseUrl).resolveUri(Uri(pathSegments: segments)).toString();
+  }
+
   static Future<bool> _hasConnection() async {
     final result = await Connectivity().checkConnectivity();
     return result != ConnectivityResult.none;

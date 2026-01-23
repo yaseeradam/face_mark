@@ -230,6 +230,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final isRegistered = statusColor == Colors.green;
+    final photoUrl = ApiService.uploadsUrl(imageUrl);
     
     return InkWell(
       onTap: () {
@@ -256,25 +257,55 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
                   color: isRegistered ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3),
                   width: 2,
                 ),
-                // Show photo if available
-                image: (imageUrl != null && imageUrl.isNotEmpty) ? DecorationImage(
-                  image: NetworkImage('${ApiService.baseUrl}/uploads/$imageUrl'),
-                  fit: BoxFit.cover,
-                  onError: (exception, stackTrace) {},
-                ) : null,
               ),
-              child: (imageUrl == null || imageUrl.isEmpty) ? Center(
-                child: isRegistered
-                    ? Icon(Icons.check_circle, color: Colors.green, size: 28)
-                    : Text(
-                        name.isNotEmpty ? name[0].toUpperCase() : '?', 
-                        style: TextStyle(
-                          fontSize: 22, 
-                          fontWeight: FontWeight.bold, 
-                          color: Colors.orange[700],
-                        ),
+              child: ClipOval(
+                child: photoUrl == null
+                    ? Center(
+                        child: isRegistered
+                            ? const Icon(Icons.check_circle, color: Colors.green, size: 28)
+                            : Text(
+                                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange[700],
+                                ),
+                              ),
+                      )
+                    : Image.network(
+                        photoUrl,
+                        width: 56,
+                        height: 56,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Center(
+                            child: isRegistered
+                                ? const Icon(Icons.check_circle, color: Colors.green, size: 28)
+                                : Text(
+                                    name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                    style: TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.orange[700],
+                                    ),
+                                  ),
+                          );
+                        },
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Center(
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                          );
+                        },
                       ),
-              ) : null,
+              ),
             ),
             const SizedBox(width: 16),
             Expanded(

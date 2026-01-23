@@ -37,7 +37,7 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
   DateTime? _lastCaptureTime;
   int _readyFrameCount = 0;
   static const _requiredReadyFrames = 2; 
-  static const _autoCaptureCooldown = Duration(seconds: 2);
+  static const _autoCaptureCooldown = Duration(milliseconds: 900);
   
   bool _isScanning = false;
   Map<String, dynamic>? _recognizedStudent;
@@ -47,12 +47,26 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
   DateTime? _lastFrameProcessed;
   static const Duration _frameProcessingInterval = Duration(milliseconds: 150);
 
+  // Performance: limiting recognition to a class reduces server search space
+  bool _isClassesLoading = false;
+  List<Map<String, dynamic>> _classes = [];
+  int? _selectedClassId;
+
+  // UX/perf: single-call marking (like "one step") when enabled
+  static const String _autoMarkKey = 'scan_auto_mark_attendance';
+  static const String _selectedClassKey = 'scan_selected_class_id';
+  bool _autoMarkAttendance = true;
+  static const String _requireSmileKey = 'scan_require_smile_liveness';
+  bool _requireSmileForLiveness = false;
+
   @override
   void initState() {
     super.initState();
     _initializeFaceDetector();
     _initializeCamera();
     _loadCheckinSettings();
+    _loadScanPreferences();
+    _loadClasses();
     
     _scanAnimationController = AnimationController(
       vsync: this,
@@ -65,6 +79,47 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
     setState(() {
       _multipleCheckinsEnabled = enabled;
     });
+  }
+
+  void _loadScanPreferences() {
+    _autoMarkAttendance = StorageService.getBool(_autoMarkKey, defaultValue: true);
+    _requireSmileForLiveness = StorageService.getBool(_requireSmileKey, defaultValue: false);
+    final storedClassId = StorageService.getString(_selectedClassKey);
+    _selectedClassId = storedClassId == null ? null : int.tryParse(storedClassId);
+  }
+
+  Future<void> _loadClasses() async {
+    if (_isClassesLoading) return;
+    if (!mounted) return;
+    setState(() => _isClassesLoading = true);
+
+    final result = await ApiService.getClasses();
+    if (!mounted) return;
+
+    if (result['success'] == true) {
+      final classes = List<Map<String, dynamic>>.from(result['data'] ?? <dynamic>[]);
+      int? selected = _selectedClassId;
+
+      if (selected != null && classes.every((c) => c['id'] != selected)) {
+        selected = null;
+      }
+      // Default to first available class for faster matching
+      selected ??= classes.isNotEmpty ? (classes.first['id'] as int?) : null;
+
+      setState(() {
+        _classes = classes;
+        _selectedClassId = selected;
+        _isClassesLoading = false;
+      });
+
+      if (selected != null) {
+        await StorageService.saveString(_selectedClassKey, selected.toString());
+      }
+
+      return;
+    }
+
+    setState(() => _isClassesLoading = false);
   }
   
   void _initializeFaceDetector() {
@@ -224,15 +279,16 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
       bool isHeadStraight = headAngleY.abs() <= 20 && headAngleZ.abs() <= 15;
       _isSmiling = smileProbability > 0.6;
       
-      // Require both valid face position AND smile
-      _isFaceValid = isHeadStraight && _isSmiling;
-      _isLivenessVerified = _isSmiling;
+      // Fast mode (FaceID-style): no smile required.
+      // Optional smile requirement can be enabled for basic liveness checking.
+      _isLivenessVerified = !_requireSmileForLiveness || _isSmiling;
+      _isFaceValid = isHeadStraight && _isLivenessVerified;
       
       // Update guidance message
       if (!isHeadStraight) {
         _guidanceMessage = "Look straight at the camera";
         _readyFrameCount = 0;
-      } else if (!_isSmiling) {
+      } else if (_requireSmileForLiveness && !_isSmiling) {
         _guidanceMessage = "😊 Please smile to verify";
         _readyFrameCount = 0;
       } else if (_isFaceValid) {
@@ -273,7 +329,9 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
       // 3. API Call (Global Search)
       final result = await ApiService.verifyFace(
         imageFile: File(photo.path),
-        autoMark: false,
+        classId: _selectedClassId,
+        autoMark: _autoMarkAttendance,
+        checkInType: _checkInType,
       );
       
       if (!mounted) return;
@@ -303,6 +361,10 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
           _showShimmer = false;
           _isScanning = false;
         });
+
+        if (_autoMarkAttendance == true && data['attendance_marked'] == true) {
+          UIHelpers.showSuccess(context, "Attendance marked");
+        }
 
         // Don't restart scanning immediately, wait for user action
       } else {
@@ -365,6 +427,81 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
     Future.delayed(const Duration(milliseconds: 500), () {
       if(mounted) _startFaceDetection();
     });
+  }
+
+  Widget _buildScanOptions(ThemeData theme, bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<int>(
+                value: _selectedClassId,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.class_),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                  filled: true,
+                  fillColor: isDark ? Colors.white10 : theme.cardColor,
+                  hintText: "Select Class (faster)",
+                ),
+                items: [
+                  const DropdownMenuItem<int>(value: null, child: Text("All Classes (slower)")),
+                  ..._classes.map(
+                    (c) => DropdownMenuItem<int>(
+                      value: c['id'],
+                      child: Text(c['class_name'] ?? c['name'] ?? 'Class'),
+                    ),
+                  ),
+                ],
+                onChanged: _isClassesLoading
+                    ? null
+                    : (v) async {
+                        setState(() => _selectedClassId = v);
+                        if (v == null) {
+                          await StorageService.removeString(_selectedClassKey);
+                        } else {
+                          await StorageService.saveString(_selectedClassKey, v.toString());
+                        }
+                      },
+              ),
+            ),
+            const SizedBox(width: 12),
+            IconButton(
+              onPressed: _isClassesLoading ? null : _loadClasses,
+              icon: _isClassesLoading
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.refresh),
+              style: IconButton.styleFrom(
+                backgroundColor: isDark ? Colors.white10 : theme.cardColor,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SwitchListTile.adaptive(
+          value: _autoMarkAttendance,
+          onChanged: (v) async {
+            setState(() => _autoMarkAttendance = v);
+            await StorageService.saveBool(_autoMarkKey, v);
+          },
+          title: const Text("Auto mark attendance"),
+          subtitle: const Text("Faster: mark in the same scan"),
+          contentPadding: EdgeInsets.zero,
+        ),
+        SwitchListTile.adaptive(
+          value: _requireSmileForLiveness,
+          onChanged: (v) async {
+            setState(() => _requireSmileForLiveness = v);
+            await StorageService.saveBool(_requireSmileKey, v);
+          },
+          title: const Text("Require smile (liveness)"),
+          subtitle: const Text("More secure, but slower"),
+          contentPadding: EdgeInsets.zero,
+        ),
+      ],
+    );
   }
   
   Future<void> _confirmAttendance() async {
@@ -568,7 +705,7 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
                           color: Colors.black.withOpacity(0.5),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: _isSmiling 
+                            color: _isFaceValid 
                                 ? Colors.green.withOpacity(0.5) 
                                 : Colors.white.withOpacity(0.2),
                           ),
@@ -578,8 +715,8 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              _isSmiling ? Icons.check_circle : Icons.info_outline,
-                              color: _isSmiling ? Colors.green : Colors.white70,
+                              _isFaceValid ? Icons.check_circle : Icons.info_outline,
+                              color: _isFaceValid ? Colors.green : Colors.white70,
                               size: 18,
                             ),
                             const SizedBox(width: 8),
@@ -587,9 +724,9 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
                               _guidanceMessage,
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: _isSmiling ? Colors.green[300] : Colors.white.withOpacity(0.9),
+                                color: _isFaceValid ? Colors.green[300] : Colors.white.withOpacity(0.9),
                                 fontSize: 14,
-                                fontWeight: _isSmiling ? FontWeight.bold : FontWeight.normal,
+                                fontWeight: _isFaceValid ? FontWeight.bold : FontWeight.normal,
                               ),
                             ),
                           ],
@@ -743,10 +880,7 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
       // While scanning, avoid showing placeholder UI that looks like a student card.
       // If there is currently NO face in frame, show a simple red message only.
       if (!_faceDetected) {
-        return _buildSimpleRedMessageSheet(
-          isDark,
-          "No face detected",
-        );
+        return _buildSimpleRedMessageSheet(isDark, "No face detected");
       }
       return _buildShimmerSheet(isDark);
     }
@@ -781,6 +915,8 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          _buildScanOptions(theme, isDark),
+          const SizedBox(height: 16),
           // Warning Banner if Already Marked
           if (isMarked)
             Container(
@@ -820,12 +956,18 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
                     width: 2
                   ),
                 ),
-                child: CircleAvatar(
-                  radius: 32,
-                  backgroundImage: photoPath != null 
-                     ? NetworkImage('${ApiService.baseUrl}/uploads/$photoPath')
-                     : null,
-                  child: photoPath == null ? const Icon(Icons.person) : null,
+                child: ClipOval(
+                  child: SizedBox(
+                    width: 64,
+                    height: 64,
+                    child: ApiService.uploadsUrl(photoPath?.toString()) == null
+                        ? const Center(child: Icon(Icons.person))
+                        : Image.network(
+                            ApiService.uploadsUrl(photoPath?.toString())!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.person)),
+                          ),
+                  ),
                 ),
               ),
               const SizedBox(width: 16),
@@ -1009,6 +1151,7 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
   }
   
   Widget _buildSimpleRedMessageSheet(bool isDark, String message) {
+    final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E2936) : Colors.white,
@@ -1018,34 +1161,39 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
         ],
       ),
       padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.10),
-              shape: BoxShape.circle,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildScanOptions(theme, isDark),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.10),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.person_off_outlined, size: 44, color: Colors.redAccent),
             ),
-            child: const Icon(Icons.person_off_outlined, size: 44, color: Colors.redAccent),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.redAccent,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
+            const SizedBox(height: 14),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.redAccent,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-        ],
+            const SizedBox(height: 12),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildShimmerSheet(bool isDark) {
+    final theme = Theme.of(context);
     final baseColor = isDark ? Colors.grey[800]! : Colors.grey[300]!;
     
     return Container(
@@ -1057,44 +1205,49 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
         ],
       ),
       padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Profile Shimmer
-          Row(
-            children: [
-              _shimmerBox(64, 64, baseColor, isCircle: true),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _shimmerBox(150, 24, baseColor),
-                    const SizedBox(height: 8),
-                    _shimmerBox(100, 16, baseColor),
-                  ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildScanOptions(theme, isDark),
+            const SizedBox(height: 16),
+            // Profile Shimmer
+            Row(
+              children: [
+                _shimmerBox(64, 64, baseColor, isCircle: true),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _shimmerBox(150, 24, baseColor),
+                      const SizedBox(height: 8),
+                      _shimmerBox(100, 16, baseColor),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          // Stats Shimmer
-          Row(
-            children: [
-              Expanded(child: _shimmerBox(double.infinity, 80, baseColor)),
-              const SizedBox(width: 16),
-              Expanded(child: _shimmerBox(double.infinity, 80, baseColor)),
-            ],
-          ),
-          const SizedBox(height: 24),
-          // Button Shimmer
-          _shimmerBox(double.infinity, 56, baseColor),
-        ],
+              ],
+            ),
+            const SizedBox(height: 24),
+            // Stats Shimmer
+            Row(
+              children: [
+                Expanded(child: _shimmerBox(double.infinity, 80, baseColor)),
+                const SizedBox(width: 16),
+                Expanded(child: _shimmerBox(double.infinity, 80, baseColor)),
+              ],
+            ),
+            const SizedBox(height: 24),
+            // Button Shimmer
+            _shimmerBox(double.infinity, 56, baseColor),
+          ],
+        ),
       ),
     );
   }
   
   Widget _buildErrorSheet(bool isDark, String message) {
+    final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E2936) : Colors.white,
@@ -1104,101 +1257,105 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
         ],
       ),
       padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Error Icon with background
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.1),
-              shape: BoxShape.circle,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildScanOptions(theme, isDark),
+            const SizedBox(height: 16),
+            // Error Icon with background
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.person_off_outlined, size: 48, color: Colors.redAccent),
             ),
-            child: const Icon(Icons.person_off_outlined, size: 48, color: Colors.redAccent),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            "Face Not Recognized",
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "This person is not registered in the system",
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey[600], fontSize: 14),
-          ),
-          const SizedBox(height: 20),
-          
-          // Helpful Tips Section
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(12),
+            const SizedBox(height: 16),
+            const Text(
+              "Face Not Recognized",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.lightbulb_outline, size: 18, color: Colors.amber[700]),
-                    const SizedBox(width: 8),
-                    Text(
-                      "Quick Tips",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.amber[700],
-                        fontSize: 13,
+            const SizedBox(height: 8),
+            Text(
+              "This person is not registered in the system",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+            ),
+            const SizedBox(height: 20),
+
+            // Helpful Tips Section
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.lightbulb_outline, size: 18, color: Colors.amber[700]),
+                      const SizedBox(width: 8),
+                      Text(
+                        "Quick Tips",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.amber[700],
+                          fontSize: 13,
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTipItem(Icons.wb_sunny_outlined, "Ensure good lighting on your face"),
+                  const SizedBox(height: 8),
+                  _buildTipItem(Icons.center_focus_strong, "Position face within the frame"),
+                  const SizedBox(height: 8),
+                  _buildTipItem(Icons.person_add_outlined, "Register first if you're a new student"),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Action Buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).pushReplacementNamed('/register-student');
+                    },
+                    icon: const Icon(Icons.person_add, size: 18),
+                    label: const Text("Register"),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                  ],
+                  ),
                 ),
-                const SizedBox(height: 12),
-                _buildTipItem(Icons.wb_sunny_outlined, "Ensure good lighting on your face"),
-                const SizedBox(height: 8),
-                _buildTipItem(Icons.center_focus_strong, "Position face within the frame"),
-                const SizedBox(height: 8),
-                _buildTipItem(Icons.person_add_outlined, "Register first if you're a new student"),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: _resetScan,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text("Scan Again"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
               ],
             ),
-          ),
-          
-          const SizedBox(height: 20),
-          
-          // Action Buttons
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).pushReplacementNamed('/register-student');
-                  },
-                  icon: const Icon(Icons.person_add, size: 18),
-                  label: const Text("Register"),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton.icon(
-                  onPressed: _resetScan,
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text("Scan Again"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

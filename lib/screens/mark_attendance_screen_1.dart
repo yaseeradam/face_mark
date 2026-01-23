@@ -1436,17 +1436,16 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(color: theme.colorScheme.primary, width: 2),
-                    image: student['photo_path'] != null
-                        ? DecorationImage(
-                            image: NetworkImage(
-                                '${ApiService.baseUrl}/uploads/${student['photo_path']}'),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
                   ),
-                  child: student['photo_path'] == null
-                      ? Icon(Icons.person, size: 32, color: theme.colorScheme.primary)
-                      : null,
+                  child: ClipOval(
+                    child: ApiService.uploadsUrl(student['photo_path']?.toString()) == null
+                        ? Icon(Icons.person, size: 32, color: theme.colorScheme.primary)
+                        : Image.network(
+                            ApiService.uploadsUrl(student['photo_path']?.toString())!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Icon(Icons.person, size: 32, color: theme.colorScheme.primary),
+                          ),
+                  ),
                 ),
                 Positioned(
                   bottom: 0,

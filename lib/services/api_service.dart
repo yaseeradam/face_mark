@@ -461,6 +461,22 @@ class ApiService {
     return await _makeRequest('GET', endpoint);
   }
 
+  static Future<Map<String, dynamic>> getAttendanceHistoryForClass(DateTime? date, {int? classId}) async {
+    String endpoint = '/attendance/history';
+    final params = <String>[];
+    if (date != null) {
+      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      params.add('date=$dateStr');
+    }
+    if (classId != null) {
+      params.add('class_id=$classId');
+    }
+    if (params.isNotEmpty) {
+      endpoint += '?${params.join('&')}';
+    }
+    return await _makeRequest('GET', endpoint);
+  }
+
   static Future<Map<String, dynamic>> exportAttendanceCSV(DateTime date) async {
     final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
     try {
@@ -474,6 +490,30 @@ class ApiService {
         return {'success': true, 'data': response.body};
       }
       return {'success': false, 'error': 'Failed to export CSV', 'status_code': response.statusCode};
+    } catch (e) {
+      return {'success': false, 'error': 'Connection error: ${e.toString()}'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> exportClassAttendanceReportCSV({
+    required int classId,
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    final start = '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
+    final end = '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
+
+    try {
+      if (!await _hasConnection()) {
+        return {'success': false, 'error': 'No internet connection'};
+      }
+      final uri = Uri.parse('$baseUrl/reports/attendance/$classId?start_date=$start&end_date=$end&format=csv');
+      final headers = await _getHeaders();
+      final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 30));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return {'success': true, 'data': response.body};
+      }
+      return {'success': false, 'error': 'Failed to export report CSV', 'status_code': response.statusCode};
     } catch (e) {
       return {'success': false, 'error': 'Connection error: ${e.toString()}'};
     }

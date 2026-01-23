@@ -328,113 +328,121 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                     ),
                   ),
                   
-                  const SizedBox(height: 64),
+                  const SizedBox(height: 56),
                   
-                  // Progress Section
-                  SizedBox(
-                    width: 280,
-                    child: Column(
-                      children: [
-                        // Status indicator row
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                AnimatedBuilder(
-                                  animation: _pulseAnimation,
-                                  builder: (context, child) {
-                                    return Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: BoxDecoration(
-                                        color: _progress >= 1.0 ? _primary : _primaryLight,
-                                        shape: BoxShape.circle,
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: (_progress >= 1.0 ? _primary : _primaryLight)
-                                                .withOpacity(_pulseAnimation.value * 0.8),
-                                            blurRadius: 8,
-                                            spreadRadius: 2,
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  _progress >= 1.0 ? "Ready" : "Loading",
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: _progress >= 1.0 ? _primary : _primaryLight,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Text(
-                              "${(_progress * 100).toInt()}%",
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: _primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 14),
-                        
-                        // Modern progress bar
-                        Container(
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: _surfaceDark,
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: Stack(
-                            children: [
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 400),
-                                curve: Curves.easeOutCubic,
-                                width: 280 * _progress,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(3),
-                                  gradient: LinearGradient(
-                                    colors: [_primary, _primaryLight],
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: _primary.withOpacity(0.5),
-                                      blurRadius: 8,
-                                      spreadRadius: 0,
+                  // Modern Loader Section
+                  Column(
+                    children: [
+                      // Animated Dots Loader
+                      AnimatedBuilder(
+                        animation: _pulseAnimation,
+                        builder: (context, child) {
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: List.generate(3, (index) {
+                              final delay = index * 0.2;
+                              final animValue = ((_pulseAnimation.value + delay) % 1.0);
+                              final scale = 0.6 + (math.sin(animValue * math.pi) * 0.4);
+                              final opacity = 0.4 + (math.sin(animValue * math.pi) * 0.6);
+                              
+                              return Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 6),
+                                child: Transform.scale(
+                                  scale: scale,
+                                  child: Container(
+                                    width: 12,
+                                    height: 12,
+                                    decoration: BoxDecoration(
+                                      color: _primary.withOpacity(opacity),
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: _primary.withOpacity(opacity * 0.5),
+                                          blurRadius: 10,
+                                          spreadRadius: 2,
+                                        ),
+                                      ],
                                     ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              );
+                            }),
+                          );
+                        },
+                      ),
+                      
+                      const SizedBox(height: 28),
+                      
+                      // Loading Text with fade animation
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        transitionBuilder: (child, animation) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.3),
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: Text(
+                          _loadingText,
+                          key: ValueKey(_loadingText),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: _textSecondary,
+                            letterSpacing: 0.3,
                           ),
                         ),
-                        
-                        const SizedBox(height: 18),
-                        
-                        // Loading Text
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 200),
-                          child: Text(
-                            _loadingText,
-                            key: ValueKey(_loadingText),
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w400,
-                              color: _textSecondary,
+                      ),
+                      
+                      const SizedBox(height: 16),
+                      
+                      // Subtle progress indicator
+                      if (_progress < 1.0)
+                        SizedBox(
+                          width: 120,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(2),
+                            child: LinearProgressIndicator(
+                              value: _progress,
+                              backgroundColor: _surfaceDark,
+                              valueColor: AlwaysStoppedAnimation<Color>(_primary.withOpacity(0.7)),
+                              minHeight: 3,
                             ),
                           ),
+                        )
+                      else
+                        // Checkmark when complete
+                        AnimatedBuilder(
+                          animation: _pulseAnimation,
+                          builder: (context, child) {
+                            return Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _primary.withOpacity(0.15),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: _primary.withOpacity(_pulseAnimation.value * 0.3),
+                                    blurRadius: 15,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                Icons.check_rounded,
+                                color: _primary,
+                                size: 20,
+                              ),
+                            );
+                          },
                         ),
-                      ],
-                    ),
+                    ],
                   ),
                 ],
               ),

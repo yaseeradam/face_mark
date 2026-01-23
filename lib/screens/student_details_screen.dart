@@ -36,21 +36,32 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
     return int.tryParse(raw.toString());
   }
 
+  String? _studentReportId() {
+    final raw = _student['id'] ??
+        _student['student_pk'] ??
+        _student['studentId'] ??
+        _student['student_id'] ??
+        _student['studentID'];
+    if (raw == null) return null;
+    final value = raw.toString().trim();
+    return value.isEmpty ? null : value;
+  }
+
   Future<void> _fetchStats() async {
-    final dbId = _studentDbId();
-    if (dbId == null) {
-      debugPrint('Cannot load student stats: missing database id');
+    final reportId = _studentReportId();
+    if (reportId == null) {
+      debugPrint('Cannot load student stats: missing student identifier');
       return;
     }
 
     setState(() => _isLoadingStats = true);
     try {
       // Fetch last 30 days by default
-      final result = await ApiService.getStudentReport(dbId.toString());
+      final result = await ApiService.getStudentReport(reportId);
       
       if (mounted) {
         if (result['success'] == true && result['data'] != null) {
-          final stats = _resolveStatsData(result['data']);
+          final stats = _resolveStudentReport(result['data']);
           setState(() {
             _stats = stats;
             _student['full_name'] = stats['full_name'] ?? _student['full_name'];
@@ -624,6 +635,136 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
       };
     }
     return {};
+  }
+
+  List<Map<String, dynamic>> _extractAttendanceHistory(dynamic raw) {
+    if (raw is Map<String, dynamic>) {
+      final dynamic direct = raw['attendance_history'] ?? raw['attendance'] ?? raw['history'] ?? raw['records'] ?? raw['entries'] ?? raw['logs'];
+      if (direct is List) {
+        return direct.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+      final inner = raw['summary'] ?? raw['stats'] ?? raw['report'] ?? raw['data'];
+      if (inner != null && inner != raw) return _extractAttendanceHistory(inner);
+    }
+    if (raw is List) {
+      return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    return <Map<String, dynamic>>[];
+  }
+
+  Map<String, dynamic> _deriveAttendanceCounts(List<Map<String, dynamic>> history, {int? knownTotalDays}) {
+    int presentCount = 0;
+    int absentCount = 0;
+    final Set<String> presentDays = <String>{};
+    final Set<String> absentDays = <String>{};
+    bool hasAnyDate = false;
+
+    for (final entry in history) {
+      final status = entry['status']?.toString().toLowerCase().trim();
+      final isPresentFlag = entry['present'] == true || entry['is_present'] == true || entry['checked_in'] == true;
+      final isAbsentFlag = entry['absent'] == true || entry['is_absent'] == true;
+
+      final isPresentStatus = status == 'present' || status == 'late' || status == 'on_time' || status == 'checked_in';
+      final isAbsentStatus = status == 'absent';
+
+      String? date = entry['date']?.toString().trim();
+      date ??= entry['attendance_date']?.toString().trim();
+      date ??= entry['day']?.toString().trim();
+      date ??= entry['timestamp']?.toString().trim();
+      date ??= entry['created_at']?.toString().trim();
+      if (date != null && date.isNotEmpty) {
+        hasAnyDate = true;
+        if (date.length >= 10) date = date.substring(0, 10);
+      } else {
+        date = null;
+      }
+
+      if (isPresentFlag || isPresentStatus) {
+        presentCount++;
+        if (date != null) presentDays.add(date);
+      } else if (isAbsentFlag || isAbsentStatus) {
+        absentCount++;
+        if (date != null) absentDays.add(date);
+      }
+    }
+
+    int present = hasAnyDate ? presentDays.length : presentCount;
+    int absent = hasAnyDate ? absentDays.difference(presentDays).length : absentCount;
+
+    int total = knownTotalDays ?? 0;
+    if (total <= 0) total = present + absent;
+    if (absent == 0 && total > 0 && present <= total) absent = total - present;
+
+    final rate = total > 0 ? (present / total) * 100 : 0.0;
+    return {
+      'days_present': present,
+      'days_absent': absent,
+      'total_days': total,
+      'attendance_rate': rate,
+    };
+  }
+
+  Map<String, dynamic> _deriveAttendanceCountsFromSummary(Map<String, dynamic> summary) {
+    final present = _asInt(summary['days_present'] ?? summary['present_days'] ?? summary['present']);
+    int absent = _asInt(summary['days_absent'] ?? summary['absent_days'] ?? summary['absent']);
+    int total = _asInt(summary['total_days'] ?? summary['total'] ?? summary['total_records'] ?? summary['total_attendance']);
+    if (total == 0) total = present + absent;
+    if (absent == 0 && total > 0 && present <= total) {
+      absent = total - present;
+    }
+
+    double rate = _asDouble(summary['attendance_rate']);
+    if (rate == 0 && total > 0) {
+      rate = (present / total) * 100;
+    }
+    if (rate > 0 && rate <= 1) {
+      rate *= 100;
+    }
+
+    return {
+      'days_present': present,
+      'days_absent': absent,
+      'total_days': total,
+      'attendance_rate': rate,
+    };
+  }
+
+  Map<String, dynamic> _resolveStudentReport(dynamic raw) {
+    if (raw is List) {
+      final history = _extractAttendanceHistory(raw);
+      return {
+        ..._deriveAttendanceCounts(history),
+        'attendance_history': history,
+      };
+    }
+
+    if (raw is! Map<String, dynamic>) return {};
+
+    final Map<String, dynamic> root = raw;
+    final Map<String, dynamic> summary = _resolveStatsData(root);
+    final history = _extractAttendanceHistory(root);
+
+    final knownTotal = _asInt(
+      summary['total_days'] ?? summary['total'] ?? summary['total_records'] ?? summary['total_attendance'],
+    );
+    final derived = history.isNotEmpty
+        ? _deriveAttendanceCounts(history, knownTotalDays: knownTotal > 0 ? knownTotal : null)
+        : _deriveAttendanceCountsFromSummary(summary);
+
+    dynamic name = root['full_name'] ?? root['name'] ?? summary['full_name'] ?? summary['name'];
+    dynamic studentId = root['student_id'] ?? root['studentId'] ?? summary['student_id'] ?? summary['studentId'];
+    dynamic classId = root['class_id'] ?? root['classId'] ?? summary['class_id'] ?? summary['classId'];
+    dynamic className = root['class_name'] ?? root['className'] ?? summary['class_name'] ?? summary['className'];
+
+    return {
+      ...summary,
+      ...derived,
+      'attendance_history': history,
+      if (name != null) 'full_name': name,
+      if (studentId != null) 'student_id': studentId,
+      if (classId != null) 'class_id': classId,
+      if (className != null) 'class_name': className,
+    };
   }
 
   int _asInt(dynamic value) {

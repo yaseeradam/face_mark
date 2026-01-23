@@ -4,10 +4,12 @@ import '../providers/theme_provider.dart';
 import '../providers/app_providers.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
+import '../services/biometric_service.dart';
 import '../theme/app_theme.dart';
 import 'package:camera/camera.dart';
 import 'dart:io';
 import 'face_capture_screen.dart';
+import 'package:local_auth/local_auth.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -23,9 +25,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   static const String _allowLateArrivalsKey = 'settings_allow_late_arrivals';
   static const String _requireAbsenceExcuseKey = 'settings_require_absence_excuse';
   static const String _multipleCheckinsKey = 'settings_multiple_checkins';
+  static const String _biometricLoginKey = 'settings_biometric_login_enabled';
 
   bool _offlineMode = false;
   bool _faceIdEnabled = false;
+  bool _biometricLoginEnabled = false;
+  bool _biometricAvailable = false;
+  bool _isUpdatingBiometric = false;
+  String _biometricLabel = 'Biometric';
+  IconData _biometricIcon = Icons.fingerprint_rounded;
   bool _isLoading = true;
   Map<String, dynamic>? _currentUser;
   TimeOfDay _schoolStartTime = const TimeOfDay(hour: 8, minute: 0);
@@ -38,8 +46,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    _biometricLoginEnabled = StorageService.getBool(_biometricLoginKey, defaultValue: false);
     _loadUserProfile();
     _loadAttendanceSettings();
+    _initBiometrics();
   }
 
   Future<void> _loadUserProfile() async {
@@ -54,6 +64,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } else {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _initBiometrics() async {
+    final available = await BiometricService.isAvailable();
+    if (!mounted) return;
+
+    if (!available) {
+      setState(() {
+        _biometricAvailable = false;
+        _biometricLabel = 'Biometric';
+        _biometricIcon = Icons.fingerprint_rounded;
+      });
+      return;
+    }
+
+    final types = await BiometricService.getAvailableBiometrics();
+    final label = BiometricService.getBiometricTypeString(types);
+    final icon = types.contains(BiometricType.face) ? Icons.face_unlock_outlined : Icons.fingerprint_rounded;
+
+    if (!mounted) return;
+    setState(() {
+      _biometricAvailable = true;
+      _biometricLabel = label;
+      _biometricIcon = icon;
+    });
+  }
+
+  Future<void> _setBiometricLoginEnabled(bool enabled) async {
+    if (_isUpdatingBiometric) return;
+
+    if (enabled) {
+      if (!_biometricAvailable) {
+        _showSnackBar('Biometric authentication is not available on this device', isError: true);
+        return;
+      }
+
+      setState(() => _isUpdatingBiometric = true);
+      final ok = await BiometricService.authenticate(
+        reason: 'Authenticate to enable biometric login',
+      );
+      if (!mounted) return;
+      setState(() => _isUpdatingBiometric = false);
+
+      if (!ok) return;
+    }
+
+    if (!mounted) return;
+    setState(() => _biometricLoginEnabled = enabled);
+    await StorageService.saveBool(_biometricLoginKey, enabled);
   }
 
   Future<void> _loadAttendanceSettings() async {
@@ -623,6 +682,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         title: 'Change Password',
                         subtitle: 'Update your password',
                         onTap: _changePassword,
+                        isDark: isDark,
+                      ),
+                      _buildDivider(isDark),
+                      _buildSwitchTile(
+                        icon: _biometricIcon,
+                        iconColor: AppTheme.primary,
+                        title: 'Biometric Login',
+                        subtitle: !_biometricAvailable
+                            ? 'Not available on this device'
+                            : (_biometricLoginEnabled ? 'Enabled (${_biometricLabel})' : 'Use ${_biometricLabel} to sign in'),
+                        value: _biometricLoginEnabled,
+                        onChanged: (_biometricAvailable && !_isUpdatingBiometric) ? _setBiometricLoginEnabled : null,
                         isDark: isDark,
                       ),
                       _buildDivider(isDark),

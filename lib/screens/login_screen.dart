@@ -23,12 +23,15 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> 
     with SingleTickerProviderStateMixin {
+  static const String _biometricLoginKey = 'settings_biometric_login_enabled';
+
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _emailFocus = FocusNode();
   final _passwordFocus = FocusNode();
   bool _obscurePassword = true;
   bool _isLoading = false;
+  bool _biometricLoginEnabled = false;
   bool _biometricAvailable = false;
   String _biometricLabel = 'Biometric';
   IconData _biometricIcon = Icons.fingerprint_rounded;
@@ -39,7 +42,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   @override
   void initState() {
     super.initState();
-    _initBiometrics();
+    _biometricLoginEnabled = StorageService.getBool(_biometricLoginKey, defaultValue: false);
+    if (_biometricLoginEnabled) {
+      _initBiometrics();
+    }
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
@@ -173,6 +179,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   Future<void> _handleBiometricLogin() async {
     if (_isLoading) return;
+
+    if (!_biometricLoginEnabled) {
+      UIHelpers.showError(context, 'Biometric login is disabled. Enable it in Settings.');
+      return;
+    }
 
     if (!_biometricAvailable) {
       UIHelpers.showError(context, 'Biometric authentication is not available on this device');
@@ -639,6 +650,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Widget _buildQuickAuthRow(BuildContext context, bool isDark) {
+    if (!_biometricLoginEnabled) {
+      return Row(
+        children: [
+          Expanded(
+            child: _QuickAuthButton(
+              label: 'ScanFace',
+              icon: Icons.face_retouching_natural,
+              isDark: isDark,
+              onTap: _handleFaceLogin,
+            ),
+          ),
+        ],
+      );
+    }
+
     return Row(
       children: [
         Expanded(

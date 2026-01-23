@@ -17,6 +17,7 @@ import '../screens/attendance_report_screen.dart';
 import '../screens/admin/admin_user_management_screen.dart';
 import '../screens/admin/admin_organization_management_screen.dart';
 import '../screens/scan_attendance_screen.dart';
+import '../screens/forgot_password_screen.dart';
 
 class AppRoutes {
   static const String splash = '/';
@@ -36,6 +37,7 @@ class AppRoutes {
   static const String adminUserManagement = '/admin-user-management';
   static const String adminOrgManagement = '/admin-org-management';
   static const String scanAttendance = '/scan-attendance';
+  static const String forgotPassword = '/forgot-password';
 
   static Map<String, WidgetBuilder> get routes => {
     splash: (context) => const SplashScreen(),
@@ -55,5 +57,6 @@ class AppRoutes {
     adminUserManagement: (context) => const AdminUserManagementScreen(),
     adminOrgManagement: (context) => const AdminOrganizationManagementScreen(),
     scanAttendance: (context) => const ScanAttendanceScreen(),
+    forgotPassword: (context) => const ForgotPasswordScreen(),
   };
 }

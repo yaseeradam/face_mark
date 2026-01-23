@@ -279,19 +279,11 @@ def check_attendance_exists(
 ) -> bool:
     if not check_date:
         check_date = date.today()
-    
-    # Create start and end of day daterange
-    from datetime import datetime
-    start_of_day = datetime.combine(check_date, datetime.min.time())
-    end_of_day = datetime.combine(check_date, datetime.max.time())
-    
+
     query = db.query(models.Attendance).filter(
-        and_(
-            models.Attendance.student_id == student_id,
-            models.Attendance.class_id == class_id,
-            models.Attendance.marked_at >= start_of_day,
-            models.Attendance.marked_at <= end_of_day
-        )
+        models.Attendance.student_id == student_id,
+        models.Attendance.class_id == class_id,
+        func.date(models.Attendance.marked_at) == check_date,
     )
     if check_in_type:
         query = query.filter(models.Attendance.check_in_type == check_in_type)
@@ -306,18 +298,11 @@ def get_attendance_record_for_date(
 ) -> Optional[models.Attendance]:
     if not check_date:
         check_date = date.today()
-    
-    from datetime import datetime
-    start_of_day = datetime.combine(check_date, datetime.min.time())
-    end_of_day = datetime.combine(check_date, datetime.max.time())
 
     query = db.query(models.Attendance).filter(
-        and_(
-            models.Attendance.student_id == student_id,
-            models.Attendance.class_id == class_id,
-            models.Attendance.marked_at >= start_of_day,
-            models.Attendance.marked_at <= end_of_day
-        )
+        models.Attendance.student_id == student_id,
+        models.Attendance.class_id == class_id,
+        func.date(models.Attendance.marked_at) == check_date,
     )
     if check_in_type:
         query = query.filter(models.Attendance.check_in_type == check_in_type)

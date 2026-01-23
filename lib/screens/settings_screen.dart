@@ -5,8 +5,9 @@ import '../providers/app_providers.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:camera/camera.dart';
 import 'dart:io';
+import 'face_capture_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -153,27 +154,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _setupFaceId() async {
-    final picker = ImagePicker();
-    final XFile? photo = await picker.pickImage(
-      source: ImageSource.camera,
-      preferredCameraDevice: CameraDevice.front,
-      imageQuality: 85,
+    final XFile? photo = await Navigator.push<XFile?>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const FaceCaptureScreen(
+          title: 'Set Up Face ID',
+          subtitle: 'Align your face in the frame and smile',
+          resolution: ResolutionPreset.medium,
+        ),
+      ),
     );
 
-    if (photo != null) {
-      setState(() => _isLoading = true);
-      final result = await ApiService.setupFaceId(File(photo.path));
-      setState(() => _isLoading = false);
+    if (photo == null) return;
 
-      if (mounted) {
-        _showSnackBar(
-          result['success'] ? 'Face ID setup successful!' : result['error'] ?? 'Failed to setup Face ID',
-          isError: !result['success'],
-        );
-        if (result['success']) {
-          setState(() => _faceIdEnabled = true);
-        }
-      }
+    setState(() => _isLoading = true);
+    final result = await ApiService.setupFaceId(File(photo.path));
+    setState(() => _isLoading = false);
+
+    if (!mounted) return;
+    _showSnackBar(
+      result['success'] ? 'Face ID setup successful!' : result['error'] ?? 'Failed to setup Face ID',
+      isError: !result['success'],
+    );
+    if (result['success']) {
+      setState(() => _faceIdEnabled = true);
     }
   }
 

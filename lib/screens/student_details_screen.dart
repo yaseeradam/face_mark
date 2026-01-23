@@ -29,17 +29,34 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
     }
   }
 
+  int? _studentDbId() {
+    final raw = _student['id'] ?? _student['student_pk'] ?? _student['studentId'];
+    if (raw == null) return null;
+    if (raw is int) return raw > 0 ? raw : null;
+    return int.tryParse(raw.toString());
+  }
+
   Future<void> _fetchStats() async {
+    final dbId = _studentDbId();
+    if (dbId == null) {
+      debugPrint('Cannot load student stats: missing database id');
+      return;
+    }
+
     setState(() => _isLoadingStats = true);
     try {
       // Fetch last 30 days by default
-      final studentKey = (_student['student_id'] ?? _student['id']).toString();
-      final result = await ApiService.getStudentReport(studentKey);
+      final result = await ApiService.getStudentReport(dbId.toString());
       
       if (mounted) {
         if (result['success'] == true && result['data'] != null) {
+          final stats = _resolveStatsData(result['data']);
           setState(() {
-            _stats = _resolveStatsData(result['data']);
+            _stats = stats;
+            _student['full_name'] = stats['full_name'] ?? _student['full_name'];
+            _student['student_id'] = stats['student_id'] ?? _student['student_id'];
+            _student['class_id'] = stats['class_id'] ?? _student['class_id'];
+            _student['class_name'] = stats['class_name'] ?? _student['class_name'];
           });
         }
       }
@@ -68,9 +85,11 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
       );
 
       if (result != null) {
+        final studentId = _studentDbId();
+        if (studentId == null) return;
         setState(() => _isLoading = true);
         final response = await ApiService.registerFace(
-          studentId: _student['id'],
+          studentId: studentId,
           imageFile: File(result.path),
         );
         setState(() => _isLoading = false);
@@ -78,7 +97,7 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
         if (mounted) {
           if (response['success']) {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Face updated successfully'), backgroundColor: Colors.green));
-            _student['face_enrolled'] = true;
+            setState(() => _student['face_enrolled'] = true);
           } else {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Update failed: ${response['error']}'), backgroundColor: Colors.red));
           }
@@ -107,8 +126,10 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
     );
 
     if (confirmed == true) {
+      final studentId = _studentDbId();
+      if (studentId == null) return;
       setState(() => _isLoading = true);
-      final result = await ApiService.deleteStudent(_student['id']);
+      final result = await ApiService.deleteStudent(studentId);
       setState(() => _isLoading = false);
 
       if (mounted) {
@@ -209,8 +230,10 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
                       ? null
                       : () async {
                           if (!formKey.currentState!.validate()) return;
+                          final studentDbId = _studentDbId();
+                          if (studentDbId == null) return;
                           setDialogState(() => isSaving = true);
-                          final result = await ApiService.updateStudent(_student['id'], {
+                          final result = await ApiService.updateStudent(studentDbId, {
                             'student_id': studentIdController.text.trim(),
                             'full_name': nameController.text.trim(),
                             'class_id': selectedClassId,
@@ -268,10 +291,18 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
     final role = (user['role'] ?? 'teacher').toString();
     final isAdmin = role == 'admin' || role == 'super_admin';
 
-    final String name = _student['full_name'] ?? 'Unknown Student';
-    final String studentId = _student['student_id'] ?? 'N/A';
-    final String className = _student['class_name'] ?? 'Class ${_student['class_id'] ?? '-'}';
+    final String name = (_student['full_name'] ?? _student['name'] ?? _student['fullName'] ?? 'Unknown Student').toString();
+    final String studentId = (_student['student_id'] ?? _student['studentId'] ?? _student['studentID'] ?? 'N/A').toString();
+    final dynamic rawClassName = _student['class_name'] ?? _student['className'];
+    final dynamic rawClassId = _student['class_id'] ?? _student['classId'];
+    final String className = (rawClassName != null && rawClassName.toString().trim().isNotEmpty)
+        ? rawClassName.toString()
+        : 'Class ${rawClassId ?? '-'}';
     final bool hasFace = _student['face_enrolled'] == true;
+    final List<Map<String, dynamic>> history = (_stats['attendance_history'] is List)
+        ? List<Map<String, dynamic>>.from(_stats['attendance_history'])
+        : <Map<String, dynamic>>[];
+    final int historyItemCount = history.length > 10 ? 10 : history.length;
 
     return Scaffold(
       appBar: AppBar(
@@ -406,6 +437,57 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
                             ],
                           ),
                         ),
+
+                        if (!_isLoadingStats && historyItemCount > 0) ...[
+                          const SizedBox(height: 32),
+                          Text("Attendance History", style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 16),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: theme.cardColor,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)],
+                            ),
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: historyItemCount,
+                              separatorBuilder: (_, __) => const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final entry = history[index];
+                                final date = (entry['date'] ?? '').toString();
+                                final time = (entry['time'] ?? '').toString();
+                                final status = (entry['status'] ?? 'present').toString();
+                                final confidence = entry['confidence'];
+                                final confidenceLabel = confidence == null ? '' : ' • ${_asDouble(confidence).toStringAsFixed(0)}%';
+                                final statusLower = status.toLowerCase();
+                                final isPresent = statusLower == 'present' || statusLower == 'late';
+                                final color = isPresent ? Colors.green : Colors.red;
+
+                                return ListTile(
+                                  leading: Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: color.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Icon(
+                                      isPresent ? Icons.check_circle_outline : Icons.cancel_outlined,
+                                      color: color,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  title: Text(date.isNotEmpty ? date : 'Unknown date'),
+                                  subtitle: Text(
+                                    '${time.isNotEmpty ? time : 'Unknown time'} • $status$confidenceLabel',
+                                    style: TextStyle(color: Colors.grey[600]),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                         
                         const SizedBox(height: 32),
                         

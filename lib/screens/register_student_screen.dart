@@ -30,6 +30,8 @@ class _RegisterStudentScreenState extends ConsumerState<RegisterStudentScreen>
   FaceDetector? _faceDetector;
   bool _isDetectingFaces = false;
   bool _isProcessingImage = false;
+  DateTime? _lastFrameProcessed;
+  static const Duration _frameProcessingInterval = Duration(milliseconds: 150);
   
   // Real-time feedback
   String _faceGuidanceMessage = "Position your face in the frame";
@@ -128,6 +130,12 @@ class _RegisterStudentScreenState extends ConsumerState<RegisterStudentScreen>
     _isDetectingFaces = true;
     _cameraController!.startImageStream((CameraImage image) {
       if (!_isDetectingFaces || _isProcessingImage || _isRegistering) return;
+      final now = DateTime.now();
+      if (_lastFrameProcessed != null &&
+          now.difference(_lastFrameProcessed!) < _frameProcessingInterval) {
+        return;
+      }
+      _lastFrameProcessed = now;
       _processImageForFaceDetection(image);
     });
   }

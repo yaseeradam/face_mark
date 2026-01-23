@@ -125,10 +125,20 @@ async def verify_face(
                 # Determine class_id if not provided
                 target_class_id = class_id if class_id else student.class_id
                 
-                # Check status
-                is_marked = crud.check_attendance_exists(db, student_id, target_class_id, check_in_type=check_in_type)
+                # Check today's attendance record (absent records should still allow check-in)
+                record = crud.get_attendance_record_for_date(
+                    db,
+                    student_id,
+                    target_class_id,
+                    check_in_type=check_in_type
+                )
+                is_marked = False
+                if record:
+                    record_status = (getattr(record, "status", None) or "present").lower()
+                    is_marked = record_status != "absent"
+
                 attendance_marked = is_marked
-                
+
                 if auto_mark and not is_marked:
                     try:
                         # Mark attendance
@@ -146,6 +156,8 @@ async def verify_face(
                          pass
                 elif is_marked:
                     message = f"Face recognized: {student_name} (Already present)"
+                elif record and not is_marked:
+                    message = f"Face recognized: {student_name} (Marked absent earlier — ready to check in)"
 
         
         return FaceVerifyResponse(

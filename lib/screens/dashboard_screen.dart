@@ -26,6 +26,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     with SingleTickerProviderStateMixin {
   bool _isLoading = true;
   Timer? _refreshTimer;
+  ProviderSubscription<int>? _navSubscription;
   late AnimationController _animationController;
   
   static const Duration _refreshInterval = Duration(seconds: 30);
@@ -43,6 +44,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       duration: const Duration(milliseconds: 600),
       vsync: this,
     );
+
+    _navSubscription = ref.listenManual<int>(navigationProvider, (previous, next) {
+      if (!mounted) return;
+      final role = (ref.read(authProvider).user?['role'] ?? 'teacher').toString();
+      final homeIndex = NavigationUtils.indexForKey(role, 'home');
+      if (previous != next && next == homeIndex) {
+        _loadDashboardData();
+      }
+    });
+
     _loadDashboardData();
     _startAutoRefresh();
   }
@@ -50,6 +61,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _navSubscription?.close();
     _animationController.dispose();
     super.dispose();
   }
@@ -304,10 +316,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               description: "Add new face",
                               color: AppTheme.info,
                               isDark: isDark,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => const RegisterStudentScreenNew()),
-                              ),
+                              onTap: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const RegisterStudentScreenNew()),
+                                );
+                                if (mounted) _loadDashboardData();
+                              },
                             ),
                           _buildActionCard(
                             context,
@@ -327,10 +342,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               description: "Manage classes",
                               color: AppTheme.accent,
                               isDark: isDark,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => const ClassManagementScreen()),
-                              ),
+                              onTap: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const ClassManagementScreen()),
+                                );
+                                if (mounted) _loadDashboardData();
+                              },
                             ),
                           if (isAdmin)
                             _buildActionCard(
@@ -340,10 +358,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               description: "Manage staff",
                               color: AppTheme.warning,
                               isDark: isDark,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => const TeacherManagementScreen()),
-                              ),
+                              onTap: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const TeacherManagementScreen()),
+                                );
+                                if (mounted) _loadDashboardData();
+                              },
                             ),
                           if (isAdmin)
                             _buildActionCard(
@@ -353,7 +374,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               description: "User management",
                               color: const Color(0xFF6366F1),
                               isDark: isDark,
-                              onTap: () => Navigator.pushNamed(context, '/admin-user-management'),
+                              onTap: () async {
+                                await Navigator.pushNamed(context, '/admin-user-management');
+                                if (mounted) _loadDashboardData();
+                              },
                             ),
                           if (isSuperAdmin)
                             _buildActionCard(
@@ -363,7 +387,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               description: "Manage orgs",
                               color: const Color(0xFF78716C),
                               isDark: isDark,
-                              onTap: () => Navigator.pushNamed(context, '/admin-org-management'),
+                              onTap: () async {
+                                await Navigator.pushNamed(context, '/admin-org-management');
+                                if (mounted) _loadDashboardData();
+                              },
                             ),
                           _buildActionCard(
                             context,

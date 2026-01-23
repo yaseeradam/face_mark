@@ -31,6 +31,8 @@ class _RegisterStudentScreenNewState extends ConsumerState<RegisterStudentScreen
   FaceDetector? _faceDetector;
   bool _isDetectingFaces = false;
   bool _isProcessingImage = false;
+  DateTime? _lastFrameProcessed;
+  static const Duration _frameProcessingInterval = Duration(milliseconds: 150);
   
   // Animation Controllers
   late AnimationController _scanAnimationController;
@@ -180,6 +182,12 @@ class _RegisterStudentScreenNewState extends ConsumerState<RegisterStudentScreen
     _isDetectingFaces = true;
     _cameraController!.startImageStream((CameraImage image) {
       if (!_isDetectingFaces || _isProcessingImage || _isCapturing || !_isScanningPhase) return;
+      final now = DateTime.now();
+      if (_lastFrameProcessed != null &&
+          now.difference(_lastFrameProcessed!) < _frameProcessingInterval) {
+        return;
+      }
+      _lastFrameProcessed = now;
       _processImageForFaceDetection(image);
     });
   }

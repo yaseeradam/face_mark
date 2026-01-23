@@ -163,6 +163,7 @@ async def get_attendance_history(
 
 @router.get("/export/csv")
 async def export_attendance_csv(
+    date: Optional[str] = Query(None, description="Export date YYYY-MM-DD (default: today)"),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_teacher)
 ):
@@ -172,12 +173,24 @@ async def export_attendance_csv(
     import csv
     from datetime import datetime
     
-    # Get attendance records (Today)
+    # Get attendance records (Today or specified date)
     class_ids = None
     if current_user["role"] != "super_admin":
         accessible_classes = await class_service.get_accessible_classes(current_user, db)
         class_ids = [cls.id for cls in accessible_classes]
-    records = await attendance_service.get_attendance_today(db, class_ids=class_ids)
+
+    filter_date = None
+    if date:
+        try:
+            from datetime import datetime as _dt
+            filter_date = _dt.strptime(date, "%Y-%m-%d").date()
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid date format. Use YYYY-MM-DD.")
+
+    if filter_date:
+        records = await attendance_service.get_attendance_by_date(db, filter_date, class_ids=class_ids)
+    else:
+        records = await attendance_service.get_attendance_today(db, class_ids=class_ids)
     
     # Create CSV
     output = io.StringIO()
@@ -186,13 +199,19 @@ async def export_attendance_csv(
     writer.writerow(['ID', 'Student Name', 'Student ID', 'Class ID', 'Time', 'Confidence'])
     
     for record in records:
+        score = record.confidence_score
+        confidence = ""
+        if score is not None:
+            confidence_value = (score * 100) if 0 <= score <= 1 else score
+            confidence = f"{confidence_value:.2f}%"
+
         writer.writerow([
             record.id,
             getattr(record.student, 'full_name', 'Unknown'),
             getattr(record.student, 'student_id', 'Unknown'),
             record.class_id,
-            record.marked_at.strftime('%H:%M:%S'),
-            f"{record.confidence_score:.2f}%"
+            record.marked_at.strftime('%H:%M:%S') if record.marked_at else '',
+            confidence,
         ])
     
     output.seek(0)

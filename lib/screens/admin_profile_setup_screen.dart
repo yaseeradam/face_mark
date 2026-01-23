@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
+import 'package:camera/camera.dart';
 import '../services/api_service.dart';
 import '../providers/app_providers.dart';
+import 'face_capture_screen.dart';
 
 class AdminProfileSetupScreen extends ConsumerStatefulWidget {
   const AdminProfileSetupScreen({super.key});
@@ -13,6 +16,7 @@ class AdminProfileSetupScreen extends ConsumerStatefulWidget {
 class _AdminProfileSetupScreenState extends ConsumerState<AdminProfileSetupScreen> {
   Map<String, dynamic> _profile = {};
   bool _isLoading = true;
+  bool _isSettingUpFaceId = false;
 
   @override
   void initState() {
@@ -80,6 +84,35 @@ class _AdminProfileSetupScreenState extends ConsumerState<AdminProfileSetupScree
             child: const Text('Update'),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _setupFaceId() async {
+    if (_isSettingUpFaceId) return;
+
+    final XFile? photo = await Navigator.push<XFile?>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const FaceCaptureScreen(
+          title: 'Set Up Face ID',
+          subtitle: 'Align your face in the frame and smile',
+          resolution: ResolutionPreset.medium,
+        ),
+      ),
+    );
+    if (photo == null) return;
+
+    if (!mounted) return;
+    setState(() => _isSettingUpFaceId = true);
+    final result = await ApiService.setupFaceId(File(photo.path));
+    if (!mounted) return;
+    setState(() => _isSettingUpFaceId = false);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result['success'] ? 'Face ID setup successful!' : (result['error'] ?? 'Failed to setup Face ID')),
+        backgroundColor: result['success'] ? Colors.green : Colors.red,
       ),
     );
   }
@@ -198,13 +231,9 @@ class _AdminProfileSetupScreenState extends ConsumerState<AdminProfileSetupScree
                             ),
                             const SizedBox(height: 16),
                             FilledButton.icon(
-                              onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Please use Settings > Face ID Setup')),
-                                );
-                              },
+                              onPressed: _isSettingUpFaceId ? null : _setupFaceId,
                               icon: const Icon(Icons.add_circle_outline, size: 16),
-                              label: const Text("Set up Face ID"),
+                              label: Text(_isSettingUpFaceId ? "Setting up..." : "Set up Face ID"),
                               style: FilledButton.styleFrom(
                                 backgroundColor: theme.colorScheme.primary,
                                 padding: const EdgeInsets.symmetric(horizontal: 16),

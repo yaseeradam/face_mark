@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:convert';
+import 'package:camera/camera.dart';
+import 'package:local_auth/local_auth.dart';
 import '../services/api_service.dart';
 import '../services/validation_service.dart';
 import '../providers/app_providers.dart';
@@ -8,7 +10,8 @@ import '../widgets/common_widgets.dart';
 import '../utils/ui_helpers.dart';
 import '../theme/app_theme.dart';
 import '../services/storage_service.dart';
-import 'package:image_picker/image_picker.dart';
+import '../services/biometric_service.dart';
+import 'face_capture_screen.dart';
 import 'dart:io';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -26,6 +29,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   final _passwordFocus = FocusNode();
   bool _obscurePassword = true;
   bool _isLoading = false;
+  bool _biometricAvailable = false;
+  String _biometricLabel = 'Biometric';
+  IconData _biometricIcon = Icons.fingerprint_rounded;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
@@ -33,6 +39,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   @override
   void initState() {
     super.initState();
+    _initBiometrics();
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
@@ -56,6 +63,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
     
     _animationController.forward();
+  }
+
+  Future<void> _initBiometrics() async {
+    final available = await BiometricService.isAvailable();
+    if (!mounted) return;
+    if (!available) {
+      setState(() {
+        _biometricAvailable = false;
+      });
+      return;
+    }
+
+    final types = await BiometricService.getAvailableBiometrics();
+    final label = BiometricService.getBiometricTypeString(types);
+    final icon = types.contains(BiometricType.face)
+        ? Icons.face_unlock_outlined
+        : Icons.fingerprint_rounded;
+
+    if (!mounted) return;
+    setState(() {
+      _biometricAvailable = true;
+      _biometricLabel = label;
+      _biometricIcon = icon;
+    });
   }
 
   @override
@@ -95,6 +126,92 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     } else {
       UIHelpers.showError(context, result['error'] ?? 'Login failed');
     }
+  }
+
+  Future<void> _handleFaceLogin() async {
+    if (_isLoading) return;
+
+    final XFile? photo = await Navigator.push<XFile?>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const FaceCaptureScreen(
+          title: 'Scan Face',
+          subtitle: 'Align your face in the frame and smile',
+          resolution: ResolutionPreset.low,
+        ),
+      ),
+    );
+    if (photo == null) return;
+
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    final result = await ApiService.faceLogin(File(photo.path));
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (result['success']) {
+      final data = Map<String, dynamic>.from(result['data'] ?? {});
+      final user = Map<String, dynamic>.from(data['teacher'] ?? {});
+      final token = data['access_token'];
+      if (token != null) {
+        ApiService.setToken(token);
+        await StorageService.saveToken(token);
+        await StorageService.saveString('user_profile', jsonEncode(user));
+        ref.read(authProvider.notifier).login(token, user);
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/dashboard');
+        }
+      } else {
+        UIHelpers.showError(context, 'Face login failed');
+      }
+    } else {
+      UIHelpers.showError(context, result['error'] ?? 'Face login failed');
+    }
+  }
+
+  Future<void> _handleBiometricLogin() async {
+    if (_isLoading) return;
+
+    if (!_biometricAvailable) {
+      UIHelpers.showError(context, 'Biometric authentication is not available on this device');
+      return;
+    }
+
+    final token = await StorageService.getToken();
+    if (token == null || token.isEmpty) {
+      UIHelpers.showError(context, 'No saved session found. Please sign in once with email/password.');
+      return;
+    }
+
+    final ok = await BiometricService.authenticate(
+      reason: 'Authenticate to sign in to FACE MARK',
+    );
+    if (!ok) return;
+
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    ApiService.setToken(token);
+
+    final profileResult = await ApiService.getProfile();
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (profileResult['success'] == true && profileResult['data'] != null) {
+      final user = Map<String, dynamic>.from(profileResult['data']);
+      await StorageService.saveString('user_profile', jsonEncode(user));
+      ref.read(authProvider.notifier).login(token, user);
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/dashboard');
+      }
+      return;
+    }
+
+    await ApiService.logout();
+    ref.read(authProvider.notifier).logout();
+    UIHelpers.showError(context, 'Session expired. Please sign in again.');
   }
 
   @override
@@ -356,7 +473,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () {},
+              onPressed: () => Navigator.pushNamed(context, '/forgot-password'),
               child: Text(
                 "Forgot password?",
                 style: TextStyle(
@@ -391,8 +508,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           
           const SizedBox(height: 24),
           
-          // Face ID Login
-          _buildFaceIdButton(context, isDark),
+          // Quick Login Methods
+          _buildQuickAuthRow(context, isDark),
         ],
       ),
     );
@@ -521,76 +638,92 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
   }
 
-  Widget _buildFaceIdButton(BuildContext context, bool isDark) {
-    return OutlinedButton(
-      onPressed: () async {
-        final picker = ImagePicker();
-        final XFile? photo = await picker.pickImage(
-          source: ImageSource.camera,
-          preferredCameraDevice: CameraDevice.front,
-          imageQuality: 85,
-        );
-        if (photo == null) return;
-
-        if (!mounted) return;
-        setState(() => _isLoading = true);
-        final result = await ApiService.faceLogin(File(photo.path));
-        if (!mounted) return;
-        setState(() => _isLoading = false);
-
-        if (result['success']) {
-          final data = Map<String, dynamic>.from(result['data'] ?? {});
-          final user = Map<String, dynamic>.from(data['teacher'] ?? {});
-          final token = data['access_token'];
-          if (token != null) {
-            ApiService.setToken(token);
-            await StorageService.saveToken(token);
-            await StorageService.saveString('user_profile', jsonEncode(user));
-            ref.read(authProvider.notifier).login(token, user);
-            if (mounted) {
-              Navigator.pushReplacementNamed(context, '/dashboard');
-            }
-          } else {
-            UIHelpers.showError(context, 'Face login failed');
-          }
-        } else {
-          UIHelpers.showError(context, result['error'] ?? 'Face login failed');
-        }
-      },
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+  Widget _buildQuickAuthRow(BuildContext context, bool isDark) {
+    return Row(
+      children: [
+        Expanded(
+          child: _QuickAuthButton(
+            label: 'ScanFace',
+            icon: Icons.face_retouching_natural,
+            isDark: isDark,
+            onTap: _handleFaceLogin,
+          ),
         ),
-        side: BorderSide(
-          color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+        const SizedBox(width: 12),
+        Expanded(
+          child: _QuickAuthButton(
+            label: _biometricLabel,
+            icon: _biometricIcon,
+            isDark: isDark,
+            onTap: _biometricAvailable ? _handleBiometricLogin : null,
+          ),
         ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              Icons.face,
-              color: AppTheme.primary,
-              size: 20,
+      ],
+    );
+  }
+}
+
+class _QuickAuthButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isDark;
+  final VoidCallback? onTap;
+
+  const _QuickAuthButton({
+    required this.label,
+    required this.icon,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final disabled = onTap == null;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.surfaceSecondaryDark : AppTheme.surfaceSecondaryLight,
+            borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+            border: Border.all(
+              color: disabled
+                  ? (isDark ? AppTheme.borderDark.withOpacity(0.5) : AppTheme.borderLight.withOpacity(0.6))
+                  : (isDark ? AppTheme.borderDark : AppTheme.borderLight),
             ),
           ),
-          const SizedBox(width: 12),
-          Text(
-            "Sign in with Face ID",
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: isDark ? AppTheme.textPrimaryDark : AppTheme.textPrimaryLight,
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 20,
+                color: disabled
+                    ? (isDark ? AppTheme.textTertiaryDark : AppTheme.textTertiaryLight)
+                    : theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: disabled
+                        ? (isDark ? AppTheme.textTertiaryDark : AppTheme.textTertiaryLight)
+                        : (isDark ? AppTheme.textPrimaryDark : AppTheme.textPrimaryLight),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

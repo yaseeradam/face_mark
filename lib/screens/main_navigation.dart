@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dashboard_screen.dart';
-import 'scan_attendance_screen.dart';
+import 'mark_attendance_screen_1.dart';
 import 'student_list_screen.dart';
 import 'reports_screen.dart';
 import 'settings_screen.dart';
@@ -30,15 +30,14 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
     final currentIndex = ref.watch(navigationProvider);
     final safeIndex = currentIndex.clamp(0, screens.length - 1);
     if (safeIndex != currentIndex) {
-      Future.microtask(() => ref.read(navigationProvider.notifier).state = safeIndex);
+      Future.microtask(
+        () => ref.read(navigationProvider.notifier).state = safeIndex,
+      );
     }
     final hasStudents = navKeys.contains('students');
 
     return Scaffold(
-      body: IndexedStack(
-        index: safeIndex,
-        children: screens,
-      ),
+      body: IndexedStack(index: safeIndex, children: screens),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: isDark ? AppTheme.surfaceDark : Colors.white,
@@ -76,7 +75,11 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
                         _labelForKey('students'),
                         isDark,
                       ),
-                      _buildCenterButton(context, isDark, NavigationUtils.indexForKey(role, 'scan')),
+                      _buildCenterButton(
+                        context,
+                        isDark,
+                        NavigationUtils.indexForKey(role, 'scan'),
+                      ),
                       _buildNavItem(
                         context,
                         NavigationUtils.indexForKey(role, 'reports'),
@@ -95,15 +98,17 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
                       ),
                     ]
                   : navKeys
-                      .map((key) => _buildNavItem(
+                        .map(
+                          (key) => _buildNavItem(
                             context,
                             NavigationUtils.indexForKey(role, key),
                             _activeIconForKey(key),
                             _inactiveIconForKey(key),
                             _labelForKey(key),
                             isDark,
-                          ))
-                      .toList(),
+                          ),
+                        )
+                        .toList(),
             ),
           ),
         ),
@@ -124,7 +129,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
     final isPressed = _pressedIndex == index;
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
-    
+
     // Map index for the skip of center button
     final actualIndex = index;
 
@@ -143,9 +148,9 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
           curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected 
-              ? primaryColor.withOpacity(0.1) 
-              : Colors.transparent,
+            color: isSelected
+                ? primaryColor.withOpacity(0.1)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
@@ -156,9 +161,11 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
                 curve: Curves.easeOutCubic,
                 child: Icon(
                   isSelected ? activeIcon : inactiveIcon,
-                  color: isSelected 
-                    ? primaryColor 
-                    : (isDark ? AppTheme.textTertiaryDark : AppTheme.textTertiaryLight),
+                  color: isSelected
+                      ? primaryColor
+                      : (isDark
+                            ? AppTheme.textTertiaryDark
+                            : AppTheme.textTertiaryLight),
                   size: 24,
                 ),
               ),
@@ -166,9 +173,11 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
               AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 250),
                 style: TextStyle(
-                  color: isSelected 
-                    ? primaryColor 
-                    : (isDark ? AppTheme.textTertiaryDark : AppTheme.textTertiaryLight),
+                  color: isSelected
+                      ? primaryColor
+                      : (isDark
+                            ? AppTheme.textTertiaryDark
+                            : AppTheme.textTertiaryLight),
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                   fontSize: 11,
                 ),
@@ -183,11 +192,10 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
 
   // Center elevated button for Scan (most common action)
   Widget _buildCenterButton(BuildContext context, bool isDark, int index) {
-    final theme = Theme.of(context);
     final currentIndex = ref.watch(navigationProvider);
     final isSelected = currentIndex == index;
     final isPressed = _pressedIndex == index;
-    
+
     return GestureDetector(
       onTapDown: (_) => setState(() => _pressedIndex = index),
       onTapUp: (_) => setState(() => _pressedIndex = null),
@@ -218,7 +226,9 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                isSelected ? Icons.face_retouching_natural : Icons.face_retouching_natural_outlined,
+                isSelected
+                    ? Icons.face_retouching_natural
+                    : Icons.face_retouching_natural_outlined,
                 color: Colors.white,
                 size: 24,
               ),
@@ -294,7 +304,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
       case 'home':
         return const DashboardScreen();
       case 'scan':
-        return const ScanAttendanceScreen();
+        return const MarkAttendanceScreen1();
       case 'students':
         return const StudentListScreen();
       case 'reports':

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../screens/splash_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/main_navigation.dart';
-import '../screens/dashboard_screen.dart';
 import '../screens/student_list_screen.dart';
 import '../screens/register_student_screen_new.dart';
 import '../screens/mark_attendance_screen_1.dart';
@@ -16,7 +15,6 @@ import '../screens/teacher_management_screen.dart';
 import '../screens/attendance_report_screen.dart';
 import '../screens/admin/admin_user_management_screen.dart';
 import '../screens/admin/admin_organization_management_screen.dart';
-import '../screens/scan_attendance_screen.dart';
 import '../screens/forgot_password_screen.dart';
 
 class AppRoutes {
@@ -56,7 +54,7 @@ class AppRoutes {
     attendanceReport: (context) => const AttendanceReportScreen(),
     adminUserManagement: (context) => const AdminUserManagementScreen(),
     adminOrgManagement: (context) => const AdminOrganizationManagementScreen(),
-    scanAttendance: (context) => const ScanAttendanceScreen(),
+    scanAttendance: (context) => const MarkAttendanceScreen1(),
     forgotPassword: (context) => const ForgotPasswordScreen(),
   };
 }

@@ -27,6 +27,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   bool _isLoading = true;
   Timer? _refreshTimer;
   ProviderSubscription<int>? _navSubscription;
+  ProviderSubscription<int>? _attendanceRefreshSubscription;
   late AnimationController _animationController;
   
   static const Duration _refreshInterval = Duration(seconds: 30);
@@ -54,6 +55,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       }
     });
 
+    _attendanceRefreshSubscription = ref.listenManual<int>(attendanceRefreshProvider, (previous, next) {
+      if (!mounted) return;
+      _loadDashboardData();
+    });
+
     _loadDashboardData();
     _startAutoRefresh();
   }
@@ -62,6 +68,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   void dispose() {
     _refreshTimer?.cancel();
     _navSubscription?.close();
+    _attendanceRefreshSubscription?.close();
     _animationController.dispose();
     super.dispose();
   }

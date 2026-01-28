@@ -85,7 +85,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     final label = BiometricService.getBiometricTypeString(types);
     final icon = types.contains(BiometricType.face)
         ? Icons.face_unlock_outlined
-        : Icons.fingerprint_rounded;
+        : (types.contains(BiometricType.fingerprint)
+            ? Icons.fingerprint_rounded
+            : Icons.lock_outline);
 
     if (!mounted) return;
     setState(() {

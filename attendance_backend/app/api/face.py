@@ -133,9 +133,10 @@ async def verify_face(
                     check_in_type=check_in_type
                 )
                 is_marked = False
+                record_status = None
                 if record:
-                    record_status = (getattr(record, "status", None) or "present").lower()
-                    is_marked = record_status != "absent"
+                    record_status = (getattr(record, "status", None) or "").strip().lower()
+                    is_marked = record_status in ("present", "late")
 
                 attendance_marked = is_marked
 
@@ -157,7 +158,10 @@ async def verify_face(
                 elif is_marked:
                     message = f"Face recognized: {student_name} (Already present)"
                 elif record and not is_marked:
-                    message = f"Face recognized: {student_name} (Marked absent earlier — ready to check in)"
+                    if record_status == "absent":
+                        message = f"Face recognized: {student_name} (Marked absent earlier — ready to check in)"
+                    else:
+                        message = f"Face recognized: {student_name} (Ready to check in)"
 
         
         return FaceVerifyResponse(

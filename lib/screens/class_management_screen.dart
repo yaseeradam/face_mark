@@ -4,7 +4,7 @@ import '../services/api_service.dart';
 import '../providers/app_providers.dart';
 import '../utils/ui_helpers.dart';
 import 'student_list_screen.dart';
-import 'reports_screen.dart';
+import 'class_attendance_screen.dart';
 
 class ClassManagementScreen extends ConsumerStatefulWidget {
   const ClassManagementScreen({super.key});
@@ -291,9 +291,9 @@ class _ClassManagementScreenState extends ConsumerState<ClassManagementScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => ReportsScreen(
-                          initialClassId: cls['id'],
-                          initialClassName: cls['class_name'],
+                        builder: (_) => ClassAttendanceScreen(
+                          classId: cls['id'],
+                          className: cls['class_name'],
                         ),
                       ),
                     );

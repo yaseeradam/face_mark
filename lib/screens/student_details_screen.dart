@@ -20,14 +20,29 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
   bool _isLoading = false;
   bool _isLoadingStats = false;
   Map<String, dynamic> _stats = {};
+  ProviderSubscription<int>? _attendanceRefreshSubscription;
 
   @override
   void initState() {
     super.initState();
     _student = widget.student;
+
+    _attendanceRefreshSubscription = ref.listenManual<int>(attendanceRefreshProvider, (previous, next) {
+      if (!mounted) return;
+      if (_student.isNotEmpty) {
+        _fetchStats();
+      }
+    });
+
     if (_student.isNotEmpty) {
       _fetchStats();
     }
+  }
+
+  @override
+  void dispose() {
+    _attendanceRefreshSubscription?.close();
+    super.dispose();
   }
 
   int? _studentDbId() {
@@ -921,18 +936,23 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
     }
 
     int present = hasAnyDate ? presentDays.length : presentCount;
-    int absent = hasAnyDate
+    int absentFromHistory = hasAnyDate
         ? absentDays.difference(presentDays).length
         : absentCount;
 
-    final expectedTotalDays = knownTotalDays ?? 0;
-    final int total = present + absent;
+    final expectedTotalDays = (knownTotalDays ?? 0);
+    final int totalDays = expectedTotalDays > 0
+        ? expectedTotalDays
+        : (present + absentFromHistory);
+    final int absent = expectedTotalDays > 0
+        ? (totalDays - present).clamp(0, totalDays).toInt()
+        : absentFromHistory;
 
-    final rate = total > 0 ? (present / total) * 100 : 0.0;
+    final rate = totalDays > 0 ? (present / totalDays) * 100 : 0.0;
     return {
       'days_present': present,
       'days_absent': absent,
-      'total_days': total,
+      'total_days': totalDays,
       'expected_total_days': expectedTotalDays,
       'attendance_rate': rate,
     };

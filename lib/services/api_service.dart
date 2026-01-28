@@ -87,6 +87,28 @@ class ApiService {
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = response.body.isNotEmpty ? jsonDecode(response.body) : {};
+
+        // Some endpoints (e.g. FaceVerifyResponse / FaceRegisterResponse) return
+        // HTTP 200 even when the operation failed, using a JSON `success` flag.
+        // Treat that flag as the real success signal when present.
+        if (data is Map && data['success'] is bool) {
+          final apiSuccess = data['success'] == true;
+          if (!apiSuccess) {
+            final errorDetail =
+                data['error'] ?? data['message'] ?? data['detail'];
+            final errorMessage =
+                (errorDetail == null || errorDetail.toString().trim().isEmpty)
+                    ? 'Request failed'
+                    : errorDetail.toString();
+            return {
+              'success': false,
+              'data': data,
+              'error': errorMessage,
+              'status_code': response.statusCode,
+            };
+          }
+        }
+
         return {'success': true, 'data': data};
       } else {
         // Try to extract meaningful error message
@@ -109,6 +131,20 @@ class ApiService {
           }
         } catch (e) {
           errorMessage = 'Server returned invalid JSON: ${response.body}';
+        }
+
+        // If the account was deactivated, force logout so the user can't stay signed in.
+        final lower = errorMessage.toLowerCase();
+        if (response.statusCode == 403 && lower.contains('inactive')) {
+          await StorageService.clearToken();
+          await StorageService.removeString('user_profile');
+          _token = null;
+          return {
+            'success': false,
+            'error': errorMessage,
+            'status_code': response.statusCode,
+            'needsAuth': true,
+          };
         }
 
         return {'success': false, 'error': errorMessage, 'status_code': response.statusCode};

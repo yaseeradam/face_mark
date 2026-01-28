@@ -3,7 +3,9 @@ import 'package:camera/camera.dart';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import '../providers/app_providers.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../utils/ui_helpers.dart';
@@ -16,9 +18,12 @@ class MarkAttendanceScreen1 extends StatefulWidget {
 }
 
 class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   CameraController? _cameraController;
   bool _isCameraInitialized = false;
+  CameraLensDirection _cameraDirection = CameraLensDirection.front;
+  bool _isChangingCamera = false;
+  bool _lifecyclePaused = false;
   late AnimationController _scanAnimationController;
   late AnimationController _bottomSheetController;
   late AnimationController _statusBadgeController;
@@ -71,6 +76,7 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadClasses();
     _initializeFaceDetector();
     _initializeCamera();
@@ -121,6 +127,43 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
     );
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      _handleCameraPause();
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed) {
+      _handleCameraResume();
+    }
+  }
+
+  Future<void> _handleCameraPause() async {
+    if (_lifecyclePaused) return;
+    _lifecyclePaused = true;
+
+    try {
+      await _stopFaceDetection();
+      await _cameraController?.dispose();
+      _cameraController = null;
+    } catch (e) {
+      debugPrint('Camera pause error: $e');
+    }
+
+    if (!mounted) return;
+    setState(() => _isCameraInitialized = false);
+  }
+
+  Future<void> _handleCameraResume() async {
+    if (!_lifecyclePaused) return;
+    _lifecyclePaused = false;
+    if (!mounted) return;
+
+    await _initializeCamera();
+  }
+
   void _loadCheckinSettings() {
     final enabled = StorageService.getBool(
       'settings_multiple_checkins',
@@ -159,17 +202,22 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
   }
 
   Future<void> _initializeCamera() async {
+    if (_isChangingCamera) return;
+    _isChangingCamera = true;
     try {
       final cameras = await availableCameras();
       if (cameras.isEmpty) return;
 
-      final frontCamera = cameras.firstWhere(
-        (camera) => camera.lensDirection == CameraLensDirection.front,
+      final selectedCamera = cameras.firstWhere(
+        (camera) => camera.lensDirection == _cameraDirection,
         orElse: () => cameras.first,
       );
 
+      await _stopFaceDetection();
+      await _cameraController?.dispose();
+
       _cameraController = CameraController(
-        frontCamera,
+        selectedCamera,
         ResolutionPreset.low,
         enableAudio: false,
         imageFormatGroup: Platform.isAndroid
@@ -186,7 +234,23 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
       }
     } catch (e) {
       debugPrint('Camera Error: $e');
+    } finally {
+      _isChangingCamera = false;
     }
+  }
+
+  Future<void> _flipCamera() async {
+    if (_isScanning || _isChangingCamera) return;
+    if (!mounted) return;
+
+    setState(() {
+      _isCameraInitialized = false;
+      _cameraDirection = _cameraDirection == CameraLensDirection.front
+          ? CameraLensDirection.back
+          : CameraLensDirection.front;
+    });
+
+    await _initializeCamera();
   }
 
   void _startFaceDetection() {
@@ -218,11 +282,15 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
         });
   }
 
-  void _stopFaceDetection() {
+  Future<void> _stopFaceDetection() async {
     _isDetectingFaces = false;
     if (_cameraController != null &&
         _cameraController!.value.isStreamingImages) {
-      _cameraController!.stopImageStream();
+      try {
+        await _cameraController!.stopImageStream();
+      } catch (e) {
+        debugPrint('Stop image stream error: $e');
+      }
     }
   }
 
@@ -418,6 +486,7 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _stopFaceDetection();
     _cameraController?.dispose();
     _faceDetector?.close();
@@ -463,7 +532,7 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
 
       if (result['success'] == true) {
         // Update bottom sheet with student data
-        final data = Map<String, dynamic>.from(
+        var data = Map<String, dynamic>.from(
           (result['data'] ?? const <String, dynamic>{}) as Map,
         );
 
@@ -473,6 +542,18 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
             data['attendance_marked'] == true) {
           _checkInType = 'outing';
           _lockToGoingOut = true;
+
+          // Re-check attendance for the new check-in type using the same capture.
+          final outingResult = await ApiService.verifyFace(
+            classId: _selectedClassId,
+            checkInType: _checkInType,
+            imageFile: File(photo.path),
+          );
+          if (outingResult['success'] == true) {
+            data = Map<String, dynamic>.from(
+              (outingResult['data'] ?? const <String, dynamic>{}) as Map,
+            );
+          }
         }
 
         setState(() {
@@ -493,11 +574,11 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
           _isScanning = false;
           _recognizedStudent = {
             'error': true,
-            'message': result['error'] ?? 'Face not recognized',
+            'message': result['error'] ?? "Face doesn't match",
           };
         });
 
-        Future.delayed(const Duration(seconds: 2), () {
+        Future.delayed(const Duration(seconds: 3), () {
           if (!mounted) return;
           final current = _recognizedStudent;
           if (current != null && current['error'] == true) {
@@ -512,7 +593,7 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
           _recognizedStudent = {'error': true, 'message': "Scan Error: $e"};
         });
 
-        Future.delayed(const Duration(seconds: 2), () {
+        Future.delayed(const Duration(seconds: 3), () {
           if (!mounted) return;
           final current = _recognizedStudent;
           if (current != null && current['error'] == true) {
@@ -672,6 +753,41 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
                     Colors.black.withOpacity(0.6),
                   ],
                   stops: const [0.0, 0.3, 1.0],
+                ),
+              ),
+            ),
+
+            // Flip Camera Button (top-right)
+            Positioned(
+              top: 16,
+              right: 16,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: (_isCameraInitialized && !_isScanning && !_isChangingCamera)
+                      ? _flipCamera
+                      : null,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.flip_camera_android,
+                      color: Colors.white.withOpacity(
+                        (_isCameraInitialized && !_isScanning && !_isChangingCamera)
+                            ? 1
+                            : 0.5,
+                      ),
+                      size: 24,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1640,7 +1756,7 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  "Recognition Failed",
+                  "Face doesn't match",
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -1660,7 +1776,7 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
                 OutlinedButton.icon(
                   onPressed: _resetScan,
                   icon: const Icon(Icons.refresh),
-                  label: const Text("Try Again"),
+                  label: const Text("Retry"),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 32,
@@ -2037,8 +2153,8 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: _resetScan,
-                  icon: const Icon(Icons.edit, size: 20),
-                  label: const Text("Manual Entry"),
+                  icon: const Icon(Icons.refresh, size: 20),
+                  label: const Text("Scan Next"),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
@@ -2095,6 +2211,14 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
                               context,
                               "Attendance confirmed!",
                             );
+
+                            final container = ProviderScope.containerOf(
+                              context,
+                              listen: false,
+                            );
+                            final refresh =
+                                container.read(attendanceRefreshProvider.notifier);
+                            refresh.state = refresh.state + 1;
                           } else {
                             UIHelpers.showError(
                               context,
@@ -2104,7 +2228,7 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
                         },
                   icon: const Icon(Icons.check, size: 20),
                   label: Text(
-                    isMarked ? "Already Present" : "Confirm Attendance",
+                    isMarked ? "Already Marked" : "Confirm Attendance",
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: theme.colorScheme.primary,

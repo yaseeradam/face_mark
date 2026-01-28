@@ -19,6 +19,17 @@ teacher_face_service = TeacherFaceService()
 async def login(login_data: Union[TeacherLogin, TeacherLoginLegacy], db: Session = Depends(get_db)):
     """Teacher login endpoint"""
     identifier = login_data.identifier if isinstance(login_data, TeacherLogin) else login_data.email
+
+    # Give a clear message for deactivated accounts instead of "wrong password".
+    teacher_candidate = crud.get_teacher_by_email(db, identifier)
+    if not teacher_candidate:
+        teacher_candidate = crud.get_teacher_by_teacher_id(db, identifier)
+    if teacher_candidate and getattr(teacher_candidate, "status", "active") != "active":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is inactive"
+        )
+
     teacher = await teacher_service.authenticate_teacher(identifier, login_data.password, db)
     
     if not teacher:

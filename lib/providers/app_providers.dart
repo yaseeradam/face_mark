@@ -77,3 +77,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
 // Navigation state provider
 final navigationProvider = StateProvider<int>((ref) => 0);
+
+// Increment to force-refresh attendance-dependent UI (dashboard, student stats, etc.)
+final attendanceRefreshProvider = StateProvider<int>((ref) => 0);

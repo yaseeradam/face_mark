@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'dart:io';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:intl/intl.dart';
+import '../providers/app_providers.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../utils/ui_helpers.dart';
@@ -15,10 +17,12 @@ class ScanAttendanceScreen extends StatefulWidget {
 }
 
 class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   CameraController? _cameraController;
   bool _isCameraInitialized = false;
   CameraLensDirection _cameraDirection = CameraLensDirection.front;
+  bool _isChangingCamera = false;
+  bool _lifecyclePaused = false;
   late AnimationController _scanAnimationController;
 
   // ML Kit Face Detection
@@ -55,13 +59,14 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
   // UX/perf: single-call marking (like "one step") when enabled
   static const String _autoMarkKey = 'scan_auto_mark_attendance';
   static const String _selectedClassKey = 'scan_selected_class_id';
-  bool _autoMarkAttendance = true;
+  bool _autoMarkAttendance = false;
   static const String _requireSmileKey = 'scan_require_smile_liveness';
   bool _requireSmileForLiveness = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeFaceDetector();
     _initializeCamera();
     _loadCheckinSettings();
@@ -72,6 +77,43 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      _handleCameraPause();
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed) {
+      _handleCameraResume();
+    }
+  }
+
+  Future<void> _handleCameraPause() async {
+    if (_lifecyclePaused) return;
+    _lifecyclePaused = true;
+
+    try {
+      await _stopFaceDetection();
+      await _cameraController?.dispose();
+      _cameraController = null;
+    } catch (e) {
+      debugPrint('Camera pause error: $e');
+    }
+
+    if (!mounted) return;
+    setState(() => _isCameraInitialized = false);
+  }
+
+  Future<void> _handleCameraResume() async {
+    if (!_lifecyclePaused) return;
+    _lifecyclePaused = false;
+    if (!mounted) return;
+
+    await _initializeCamera();
   }
 
   void _loadCheckinSettings() {
@@ -87,7 +129,7 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
   void _loadScanPreferences() {
     _autoMarkAttendance = StorageService.getBool(
       _autoMarkKey,
-      defaultValue: true,
+      defaultValue: false,
     );
     _requireSmileForLiveness = StorageService.getBool(
       _requireSmileKey,
@@ -146,6 +188,8 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
   }
 
   Future<void> _initializeCamera() async {
+    if (_isChangingCamera) return;
+    _isChangingCamera = true;
     try {
       final cameras = await availableCameras();
       if (cameras.isEmpty) return;
@@ -154,6 +198,9 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
         (camera) => camera.lensDirection == _cameraDirection,
         orElse: () => cameras.first,
       );
+
+      await _stopFaceDetection();
+      await _cameraController?.dispose();
 
       _cameraController = CameraController(
         selectedCamera,
@@ -172,15 +219,13 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
       }
     } catch (e) {
       debugPrint('Camera Error: $e');
+    } finally {
+      _isChangingCamera = false;
     }
   }
 
   Future<void> _flipCamera() async {
-    if (_isScanning) return; // Don't flip while scanning
-
-    // Stop detection and dispose current camera
-    _stopFaceDetection();
-    await _cameraController?.dispose();
+    if (_isScanning || _isChangingCamera) return; // Don't flip while scanning
 
     // Toggle camera direction
     setState(() {
@@ -211,11 +256,15 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
     });
   }
 
-  void _stopFaceDetection() {
+  Future<void> _stopFaceDetection() async {
     _isDetectingFaces = false;
     if (_cameraController != null &&
         _cameraController!.value.isStreamingImages) {
-      _cameraController!.stopImageStream();
+      try {
+        await _cameraController!.stopImageStream();
+      } catch (e) {
+        debugPrint('Stop image stream error: $e');
+      }
     }
   }
 
@@ -340,7 +389,7 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
 
     try {
       // 1. Stop Stream
-      _stopFaceDetection();
+      await _stopFaceDetection();
       await Future.delayed(const Duration(milliseconds: 200)); // stabilized
 
       // 2. Capture
@@ -573,6 +622,13 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
             _isScanning = false;
           });
 
+          final container = ProviderScope.containerOf(
+            context,
+            listen: false,
+          );
+          final refresh = container.read(attendanceRefreshProvider.notifier);
+          refresh.state = refresh.state + 1;
+
           // Auto reset after success
           Future.delayed(const Duration(seconds: 2), _resetScan);
         } else {
@@ -608,6 +664,7 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _stopFaceDetection();
     _cameraController?.dispose();
     _faceDetector?.close();

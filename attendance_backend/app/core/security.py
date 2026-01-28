@@ -5,7 +5,9 @@ from jose import JWTError, jwt
 import bcrypt
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
 from .config import settings
+from ..db.base import get_db
 
 # ==================================================
 # 🔧 DEV MODE - Set to True to bypass authentication
@@ -51,35 +53,53 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-def require_admin(current_user: dict = Depends(verify_token)):
+def _ensure_active_account(current_user: dict, db: Session) -> None:
+    # Avoid circular import at module load time (crud imports core.security).
+    from ..db import crud
+
+    teacher = crud.get_teacher_by_id(db, current_user["user_id"])
+    if not teacher:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    if getattr(teacher, "status", "active") != "active":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is inactive")
+
+def require_admin(current_user: dict = Depends(verify_token), db: Session = Depends(get_db)):
     # 🔧 DEV MODE: Always return admin
     if DEV_MODE:
         return {"user_id": 1, "role": "super_admin"}
+
+    _ensure_active_account(current_user, db)
     
     if current_user["role"] not in ["admin", "super_admin"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
 
-def require_teacher(current_user: dict = Depends(verify_token)):
+def require_teacher(current_user: dict = Depends(verify_token), db: Session = Depends(get_db)):
     # 🔧 DEV MODE: Always return admin (has teacher permissions)
     if DEV_MODE:
         return {"user_id": 1, "role": "super_admin"}
+
+    _ensure_active_account(current_user, db)
     
     if current_user["role"] not in ["admin", "teacher", "super_admin"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher access required")
     return current_user
 
-def require_admin_or_super_admin(current_user: dict = Depends(verify_token)):
+def require_admin_or_super_admin(current_user: dict = Depends(verify_token), db: Session = Depends(get_db)):
     if DEV_MODE:
         return {"user_id": 1, "role": "super_admin"}
+
+    _ensure_active_account(current_user, db)
 
     if current_user["role"] not in ["admin", "super_admin"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
 
-def require_super_admin(current_user: dict = Depends(verify_token)):
+def require_super_admin(current_user: dict = Depends(verify_token), db: Session = Depends(get_db)):
     if DEV_MODE:
         return {"user_id": 1, "role": "super_admin"}
+
+    _ensure_active_account(current_user, db)
 
     if current_user["role"] != "super_admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Super admin access required")

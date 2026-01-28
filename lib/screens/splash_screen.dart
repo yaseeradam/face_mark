@@ -116,13 +116,26 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           }
 
           final profileResult = await ApiService.getProfile();
+          final needsAuth = profileResult['needsAuth'] == true ||
+              profileResult['status_code'] == 401 ||
+              profileResult['status_code'] == 403;
+
           if (profileResult['success'] && profileResult['data'] != null) {
             user = Map<String, dynamic>.from(profileResult['data']);
             await StorageService.saveString('user_profile', jsonEncode(user));
-          }
 
-          ref.read(authProvider.notifier).login(token, user);
-          Navigator.pushReplacementNamed(context, '/dashboard');
+            ref.read(authProvider.notifier).login(token, user);
+            Navigator.pushReplacementNamed(context, '/dashboard');
+          } else if (needsAuth) {
+            // Token is invalid or account was deactivated. Force re-login.
+            await ApiService.logout();
+            ref.read(authProvider.notifier).logout();
+            Navigator.pushReplacementNamed(context, '/login');
+          } else {
+            // Can't verify right now (e.g. offline). Continue with cached profile.
+            ref.read(authProvider.notifier).login(token, user);
+            Navigator.pushReplacementNamed(context, '/dashboard');
+          }
         } else {
           Navigator.pushReplacementNamed(context, '/login');
         }

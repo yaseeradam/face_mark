@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'storage_service.dart';
+import '../utils/image_compressor.dart';
 
 class ApiService {
   // For Android emulator use 10.0.2.2, for iOS simulator use localhost
@@ -429,12 +430,27 @@ class ApiService {
     final int dbId = createResult['data']['id'];
 
     // 2. Register Face
-    return await _makeRequest(
-      'POST',
-      '/face/register',
-      file: imageFile,
-      fields: {'student_id': dbId.toString()},
-    );
+    File? compressed;
+    try {
+      compressed = await ImageCompressor.compressForUpload(imageFile);
+    } catch (_) {
+      compressed = null;
+    }
+
+    try {
+      return await _makeRequest(
+        'POST',
+        '/face/register',
+        file: compressed ?? imageFile,
+        fields: {'student_id': dbId.toString()},
+      );
+    } finally {
+      if (compressed != null && compressed.path != imageFile.path) {
+        try {
+          await compressed.delete();
+        } catch (_) {}
+      }
+    }
   }
 
   static Future<Map<String, dynamic>> verifyFace({
@@ -462,12 +478,27 @@ class ApiService {
     required int studentId,
     required File imageFile,
   }) async {
-    return await _makeRequest(
-      'POST',
-      '/face/register',
-      file: imageFile,
-      fields: {'student_id': studentId.toString()},
-    );
+    File? compressed;
+    try {
+      compressed = await ImageCompressor.compressForUpload(imageFile);
+    } catch (_) {
+      compressed = null;
+    }
+
+    try {
+      return await _makeRequest(
+        'POST',
+        '/face/register',
+        file: compressed ?? imageFile,
+        fields: {'student_id': studentId.toString()},
+      );
+    } finally {
+      if (compressed != null && compressed.path != imageFile.path) {
+        try {
+          await compressed.delete();
+        } catch (_) {}
+      }
+    }
   }
 
   static Future<Map<String, dynamic>> deleteFace(int studentId) async {

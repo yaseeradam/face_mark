@@ -231,10 +231,19 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final isRegistered = statusColor == Colors.green;
     final photoUrl = ApiService.uploadsUrl(imageUrl);
+    final rawId = student['id'];
+    final int? studentDbId = rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '');
     
     return InkWell(
-      onTap: () {
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => StudentDetailsScreen(student: student)));
+      onTap: () async {
+        final result = await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => StudentDetailsScreen(studentId: studentDbId, student: student),
+          ),
+        );
+        if (result == true) {
+          _loadStudents();
+        }
       },
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),

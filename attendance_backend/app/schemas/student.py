@@ -19,6 +19,7 @@ class StudentResponse(BaseModel):
     full_name: str
     class_id: int
     face_enrolled: bool
+    photo_path: Optional[str] = None
     created_at: datetime
     class_obj: Optional[dict] = None  # Will be populated with class info
     

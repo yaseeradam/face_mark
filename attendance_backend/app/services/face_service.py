@@ -9,6 +9,7 @@ import numpy as np
 import os
 import uuid
 import time
+from PIL import Image
 
 # Directory to save student photos
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads", "students")
@@ -79,20 +80,30 @@ class FaceService:
             is_valid, message = validate_image_format(image_data)
             if not is_valid:
                 return False, message
-            
-            # Save the photo as student profile picture
-            photo_filename = f"{student_id}_{uuid.uuid4().hex[:8]}.jpg"
-            photo_path = os.path.join(UPLOAD_DIR, photo_filename)
-            with open(photo_path, 'wb') as f:
-                f.write(image_data)
-            
+
             # Preprocess image
             image = preprocess_image(image_data)
             if image is None:
                 return False, "Failed to process image"
             
-            # Resize if needed
+            # Resize if needed (for embeddings)
             image = resize_image_if_needed(image)
+
+            # Save a compressed profile photo to reduce storage (keep it large enough for UI)
+            photo_filename = f"{student_id}_{uuid.uuid4().hex[:8]}.jpg"
+            photo_path = os.path.join(UPLOAD_DIR, photo_filename)
+            try:
+                photo_image = resize_image_if_needed(image, max_size=512)
+                Image.fromarray(photo_image).save(
+                    photo_path,
+                    format="JPEG",
+                    quality=80,
+                    optimize=True,
+                )
+            except Exception:
+                # Fallback: store the original bytes if compression fails
+                with open(photo_path, "wb") as f:
+                    f.write(image_data)
             
             # Generate embedding
             embedding_json, embed_message = generate_embedding(image)

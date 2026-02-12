@@ -29,10 +29,32 @@ async def mark_attendance(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this class")
     
     try:
-        attendance = await attendance_service.mark_attendance(student_id, class_id, confidence_score, db, check_in_type=check_in_type)
-        return AttendanceResponse.model_validate(attendance)
+        attendance = await attendance_service.mark_attendance(
+            student_id,
+            class_id,
+            confidence_score,
+            db,
+            check_in_type=check_in_type,
+        )
+        # Return a plain dict to avoid Pydantic trying to coerce ORM relationships
+        # (e.g. `attendance.student`) into `dict` fields on the response schema.
+        return {
+            "id": attendance.id,
+            "student_id": attendance.student_id,
+            "class_id": attendance.class_id,
+            "marked_at": attendance.marked_at,
+            "confidence_score": attendance.confidence_score,
+            "status": attendance.status,
+            "check_in_type": attendance.check_in_type,
+        }
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        print(f"Error marking attendance: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to mark attendance",
+        )
 
 @router.get("/today", response_model=List[AttendanceWithDetails])
 async def get_attendance_today(
@@ -57,13 +79,20 @@ async def get_attendance_today(
     
     result = []
     for attendance in all_attendance:
-        attendance_dict = AttendanceWithDetails.model_validate(attendance).model_dump()
-        if attendance.student:
-            attendance_dict["student_name"] = attendance.student.full_name
-            attendance_dict["student_student_id"] = attendance.student.student_id
-        if attendance.class_obj:
-            attendance_dict["class_name"] = attendance.class_obj.class_name
-        result.append(attendance_dict)
+        result.append(
+            {
+                "id": attendance.id,
+                "student_id": attendance.student_id,
+                "class_id": attendance.class_id,
+                "marked_at": attendance.marked_at,
+                "confidence_score": attendance.confidence_score,
+                "status": attendance.status,
+                "check_in_type": attendance.check_in_type,
+                "student_name": attendance.student.full_name if attendance.student else None,
+                "student_student_id": attendance.student.student_id if attendance.student else None,
+                "class_name": attendance.class_obj.class_name if attendance.class_obj else None,
+            }
+        )
     
     return result
 
@@ -84,13 +113,20 @@ async def get_attendance_by_class(
     
     result = []
     for attendance in attendance_records:
-        attendance_dict = AttendanceWithDetails.model_validate(attendance).model_dump()
-        if attendance.student:
-            attendance_dict["student_name"] = attendance.student.full_name
-            attendance_dict["student_student_id"] = attendance.student.student_id
-        if attendance.class_obj:
-            attendance_dict["class_name"] = attendance.class_obj.class_name
-        result.append(attendance_dict)
+        result.append(
+            {
+                "id": attendance.id,
+                "student_id": attendance.student_id,
+                "class_id": attendance.class_id,
+                "marked_at": attendance.marked_at,
+                "confidence_score": attendance.confidence_score,
+                "status": attendance.status,
+                "check_in_type": attendance.check_in_type,
+                "student_name": attendance.student.full_name if attendance.student else None,
+                "student_student_id": attendance.student.student_id if attendance.student else None,
+                "class_name": attendance.class_obj.class_name if attendance.class_obj else None,
+            }
+        )
     
     return result
 

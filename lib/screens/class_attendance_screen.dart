@@ -29,7 +29,11 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedDate = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    _selectedDate = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+    );
     _loadInitial();
   }
 
@@ -50,7 +54,9 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
 
     if (result['success'] == true) {
       setState(() {
-        _students = List<Map<String, dynamic>>.from(result['data'] ?? const <dynamic>[]);
+        _students = List<Map<String, dynamic>>.from(
+          result['data'] ?? const <dynamic>[],
+        );
         _isLoadingStudents = false;
       });
       return;
@@ -76,7 +82,9 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
     if (!mounted) return;
 
     if (result['success'] == true) {
-      final records = List<Map<String, dynamic>>.from(result['data'] ?? const <dynamic>[]);
+      final records = List<Map<String, dynamic>>.from(
+        result['data'] ?? const <dynamic>[],
+      );
       final map = <int, Map<String, dynamic>>{};
       for (final record in records) {
         final rawId = record['student_id'];
@@ -143,7 +151,6 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
 
     final totalStudents = _students.length;
     int present = 0;
-    int late = 0;
     int absent = 0;
 
     for (final student in _students) {
@@ -152,20 +159,23 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
       final status = _statusLabel(record).toLowerCase();
       if (status == 'present') present++;
       if (status == 'late') {
-        late++;
         present++;
       }
       if (status == 'absent' || status == 'not marked') absent++;
     }
 
-    final rate = totalStudents > 0 ? ((present / totalStudents) * 100).round() : 0;
+    final rate = totalStudents > 0
+        ? ((present / totalStudents) * 100).round()
+        : 0;
     final dateLabel = DateFormat('MMM d, yyyy').format(_selectedDate);
     final title = widget.className?.toString().trim().isNotEmpty == true
         ? widget.className!.toString()
         : 'Class Attendance';
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF101922) : const Color(0xFFF6F7F8),
+      backgroundColor: isDark
+          ? const Color(0xFF101922)
+          : const Color(0xFFF6F7F8),
       appBar: AppBar(
         title: Text(title),
         actions: [
@@ -227,7 +237,10 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
                   Expanded(
                     child: Text(
                       dateLabel,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   TextButton.icon(
@@ -241,17 +254,41 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(child: _StatCard(label: 'Students', value: '$totalStudents', color: Colors.blue)),
+                Expanded(
+                  child: _StatCard(
+                    label: 'Students',
+                    value: '$totalStudents',
+                    color: Colors.blue,
+                  ),
+                ),
                 const SizedBox(width: 12),
-                Expanded(child: _StatCard(label: 'Present', value: '$present', color: Colors.green)),
+                Expanded(
+                  child: _StatCard(
+                    label: 'Present',
+                    value: '$present',
+                    color: Colors.green,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(child: _StatCard(label: 'Absent', value: '$absent', color: Colors.red)),
+                Expanded(
+                  child: _StatCard(
+                    label: 'Absent',
+                    value: '$absent',
+                    color: Colors.red,
+                  ),
+                ),
                 const SizedBox(width: 12),
-                Expanded(child: _StatCard(label: 'Rate', value: '$rate%', color: Colors.purple)),
+                Expanded(
+                  child: _StatCard(
+                    label: 'Rate',
+                    value: '$rate%',
+                    color: Colors.purple,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -266,7 +303,9 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
                 child: Center(
                   child: Text(
                     'No students found in this class.',
-                    style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+                    style: TextStyle(
+                      color: isDark ? Colors.white70 : Colors.black54,
+                    ),
                   ),
                 ),
               )
@@ -276,12 +315,17 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
                 final record = _attendanceByStudentId[id];
                 final status = _statusLabel(record);
                 final color = _statusColor(status);
-                final name = (student['full_name'] ?? student['name'] ?? 'Unknown').toString();
+                final name =
+                    (student['full_name'] ?? student['name'] ?? 'Unknown')
+                        .toString();
                 final studentId = (student['student_id'] ?? '').toString();
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: isDark ? const Color(0xFF1E2936) : Colors.white,
                     borderRadius: BorderRadius.circular(14),
@@ -314,14 +358,19 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen> {
                                 'ID: $studentId',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: isDark ? Colors.white54 : Colors.black54,
+                                  color: isDark
+                                      ? Colors.white54
+                                      : Colors.black54,
                                 ),
                               ),
                           ],
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: color.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(20),
@@ -408,4 +457,3 @@ class _StatCard extends StatelessWidget {
     );
   }
 }
-

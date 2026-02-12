@@ -110,11 +110,18 @@ async def get_student_by_id(
     if not has_access:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this student")
     
-    student_dict = StudentWithClass.model_validate(student).model_dump()
-    if student.class_obj:
-        student_dict["class_name"] = student.class_obj.class_name
-    
-    return student_dict
+    # Return a plain dict to avoid Pydantic trying to coerce ORM relationships
+    # (e.g. `student.class_obj`) into `dict` fields on the response schema.
+    return {
+        "id": student.id,
+        "student_id": student.student_id,
+        "full_name": student.full_name,
+        "class_id": student.class_id,
+        "face_enrolled": student.face_enrolled,
+        "photo_path": student.photo_path,
+        "created_at": student.created_at,
+        "class_name": student.class_obj.class_name if student.class_obj else None,
+    }
 
 @router.put("/{student_id}", response_model=StudentResponse)
 async def update_student(
@@ -141,9 +148,23 @@ async def update_student(
     
     try:
         updated_student = await student_service.update_student(student_id, student_data, db)
-        return StudentResponse.model_validate(updated_student)
+        return {
+            "id": updated_student.id,
+            "student_id": updated_student.student_id,
+            "full_name": updated_student.full_name,
+            "class_id": updated_student.class_id,
+            "face_enrolled": updated_student.face_enrolled,
+            "photo_path": updated_student.photo_path,
+            "created_at": updated_student.created_at,
+        }
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        print(f"Error updating student: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update student",
+        )
 
 @router.delete("/{student_id}")
 async def delete_student(

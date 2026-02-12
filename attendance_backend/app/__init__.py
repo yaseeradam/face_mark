@@ -1,0 +1,2 @@
+"""Attendance backend application package."""
+

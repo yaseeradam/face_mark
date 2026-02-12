@@ -9,7 +9,8 @@ class ApiService {
   // For Android emulator use 10.0.2.2, for iOS simulator use localhost
   // For physical device via USB: use localhost with adb reverse
   // For physical device via WiFi: use computer's local IP
-  static const String baseUrl = 'http://13.51.55.238:8100'; // Network connection
+  static const String baseUrl =
+      'http://13.51.55.238:8100'; // Network connection
   static String? _token;
 
   static String? uploadsUrl(String? relativePath) {
@@ -23,7 +24,9 @@ class ApiService {
       ...normalized.split('/').where((s) => s.trim().isNotEmpty),
     ];
 
-    return Uri.parse(baseUrl).resolveUri(Uri(pathSegments: segments)).toString();
+    return Uri.parse(
+      baseUrl,
+    ).resolveUri(Uri(pathSegments: segments)).toString();
   }
 
   static Future<bool> _hasConnection() async {
@@ -50,25 +53,41 @@ class ApiService {
 
       switch (method.toUpperCase()) {
         case 'GET':
-          response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 30));
+          response = await http
+              .get(uri, headers: headers)
+              .timeout(const Duration(seconds: 30));
           break;
         case 'POST':
           if (file != null) {
             var request = http.MultipartRequest('POST', uri);
-            request.headers.addAll(headers);
+            // Let MultipartRequest set its own `Content-Type` with boundary.
+            // Keep auth headers but avoid forcing JSON content type.
+            final multipartHeaders = Map<String, String>.from(headers);
+            multipartHeaders.remove('Content-Type');
+            request.headers.addAll(multipartHeaders);
             if (fields != null) request.fields.addAll(fields);
-            request.files.add(await http.MultipartFile.fromPath('file', file.path));
-            final streamedResponse = await request.send().timeout(const Duration(seconds: 60));
+            request.files.add(
+              await http.MultipartFile.fromPath('file', file.path),
+            );
+            final streamedResponse = await request.send().timeout(
+              const Duration(seconds: 60),
+            );
             response = await http.Response.fromStream(streamedResponse);
           } else {
-            response = await http.post(uri, headers: headers, body: jsonEncode(body)).timeout(const Duration(seconds: 30));
+            response = await http
+                .post(uri, headers: headers, body: jsonEncode(body))
+                .timeout(const Duration(seconds: 30));
           }
           break;
         case 'PUT':
-          response = await http.put(uri, headers: headers, body: jsonEncode(body)).timeout(const Duration(seconds: 30));
+          response = await http
+              .put(uri, headers: headers, body: jsonEncode(body))
+              .timeout(const Duration(seconds: 30));
           break;
         case 'DELETE':
-          response = await http.delete(uri, headers: headers).timeout(const Duration(seconds: 30));
+          response = await http
+              .delete(uri, headers: headers)
+              .timeout(const Duration(seconds: 30));
           break;
         default:
           return {'success': false, 'error': 'Invalid HTTP method'};
@@ -79,10 +98,21 @@ class ApiService {
         final refreshResult = await _refreshToken();
         if (refreshResult['success']) {
           // Retry the original request
-          return await _makeRequest(method, endpoint, body: body, file: file, fields: fields, retryOnAuth: false);
+          return await _makeRequest(
+            method,
+            endpoint,
+            body: body,
+            file: file,
+            fields: fields,
+            retryOnAuth: false,
+          );
         } else {
           await StorageService.clearToken();
-          return {'success': false, 'error': 'Session expired. Please login again.', 'needsAuth': true};
+          return {
+            'success': false,
+            'error': 'Session expired. Please login again.',
+            'needsAuth': true,
+          };
         }
       }
 
@@ -99,8 +129,8 @@ class ApiService {
                 data['error'] ?? data['message'] ?? data['detail'];
             final errorMessage =
                 (errorDetail == null || errorDetail.toString().trim().isEmpty)
-                    ? 'Request failed'
-                    : errorDetail.toString();
+                ? 'Request failed'
+                : errorDetail.toString();
             return {
               'success': false,
               'data': data,
@@ -113,16 +143,20 @@ class ApiService {
         return {'success': true, 'data': data};
       } else {
         // Try to extract meaningful error message
-        String errorMessage = 'Request failed with status ${response.statusCode}';
+        String errorMessage =
+            'Request failed with status ${response.statusCode}';
 
         try {
           if (response.body.isNotEmpty) {
             final error = jsonDecode(response.body);
             // Handle case where detail could be a List (FastAPI validation errors)
-            final errorDetail = error['detail'] ?? error['message'] ?? error['error'];
+            final errorDetail =
+                error['detail'] ?? error['message'] ?? error['error'];
             if (errorDetail != null) {
               if (errorDetail is List) {
-                errorMessage = errorDetail.map((e) => e['msg'] ?? e.toString()).join(', ');
+                errorMessage = errorDetail
+                    .map((e) => e['msg'] ?? e.toString())
+                    .join(', ');
               } else {
                 errorMessage = errorDetail.toString();
               }
@@ -148,7 +182,11 @@ class ApiService {
           };
         }
 
-        return {'success': false, 'error': errorMessage, 'status_code': response.statusCode};
+        return {
+          'success': false,
+          'error': errorMessage,
+          'status_code': response.statusCode,
+        };
       }
     } catch (e) {
       return {'success': false, 'error': 'Connection error: ${e.toString()}'};
@@ -160,18 +198,23 @@ class ApiService {
       final refreshToken = StorageService.getString('refresh_token');
       if (refreshToken == null) return {'success': false};
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/refresh'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'refresh_token': refreshToken}),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/refresh'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'refresh_token': refreshToken}),
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         _token = data['access_token'];
         await StorageService.saveToken(_token!);
         if (data['refresh_token'] != null) {
-          await StorageService.saveString('refresh_token', data['refresh_token']);
+          await StorageService.saveString(
+            'refresh_token',
+            data['refresh_token'],
+          );
         }
         return {'success': true, 'data': data};
       }
@@ -201,14 +244,20 @@ class ApiService {
     );
   }
 
-  static Future<Map<String, dynamic>> login(String email, String password) async {
+  static Future<Map<String, dynamic>> login(
+    String email,
+    String password,
+  ) async {
     // Skip token refresh on 401 for login since there's no valid token yet
     final identifier = email.trim();
-    final isEmail = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(identifier);
+    final isEmail = RegExp(
+      r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+    ).hasMatch(identifier);
     final body = {
       'identifier': identifier,
       'password': password,
-      if (isEmail) 'email': identifier, // Backward-compatible with older auth payloads.
+      if (isEmail)
+        'email': identifier, // Backward-compatible with older auth payloads.
     };
     final result = await _makeRequest(
       'POST',
@@ -242,10 +291,17 @@ class ApiService {
       if (response.statusCode == 200) {
         return {'success': true, 'message': 'Server is reachable'};
       } else {
-        return {'success': false, 'error': 'Server not responding properly', 'status': response.statusCode};
+        return {
+          'success': false,
+          'error': 'Server not responding properly',
+          'status': response.statusCode,
+        };
       }
     } catch (e) {
-      return {'success': false, 'error': 'Cannot connect to server: ${e.toString()}'};
+      return {
+        'success': false,
+        'error': 'Cannot connect to server: ${e.toString()}',
+      };
     }
   }
 
@@ -258,7 +314,9 @@ class ApiService {
     return await _makeRequest('GET', '/attendance/settings');
   }
 
-  static Future<Map<String, dynamic>> updateAttendanceSettings(Map<String, dynamic> settings) async {
+  static Future<Map<String, dynamic>> updateAttendanceSettings(
+    Map<String, dynamic> settings,
+  ) async {
     return await _makeRequest('PUT', '/attendance/settings', body: settings);
   }
 
@@ -270,11 +328,15 @@ class ApiService {
     );
   }
 
-  static Future<Map<String, dynamic>> changePassword(String oldPassword, String newPassword) async {
-    return await _makeRequest('POST', '/teachers/change-password', body: {
-      'old_password': oldPassword,
-      'new_password': newPassword,
-    });
+  static Future<Map<String, dynamic>> changePassword(
+    String oldPassword,
+    String newPassword,
+  ) async {
+    return await _makeRequest(
+      'POST',
+      '/teachers/change-password',
+      body: {'old_password': oldPassword, 'new_password': newPassword},
+    );
   }
 
   // Admin User Management endpoints
@@ -286,11 +348,16 @@ class ApiService {
     return await _makeRequest('GET', '/teachers/$userId');
   }
 
-  static Future<Map<String, dynamic>> createUser(Map<String, dynamic> userData) async {
+  static Future<Map<String, dynamic>> createUser(
+    Map<String, dynamic> userData,
+  ) async {
     return await _makeRequest('POST', '/teachers/', body: userData);
   }
 
-  static Future<Map<String, dynamic>> updateUser(String userId, Map<String, dynamic> userData) async {
+  static Future<Map<String, dynamic>> updateUser(
+    String userId,
+    Map<String, dynamic> userData,
+  ) async {
     return await _makeRequest('PUT', '/teachers/$userId', body: userData);
   }
 
@@ -298,12 +365,23 @@ class ApiService {
     return await _makeRequest('DELETE', '/teachers/$userId');
   }
 
-  static Future<Map<String, dynamic>> updateUserStatus(String userId, String status) async {
-    return await _makeRequest('PUT', '/teachers/$userId', body: {'status': status});
+  static Future<Map<String, dynamic>> updateUserStatus(
+    String userId,
+    String status,
+  ) async {
+    return await _makeRequest(
+      'PUT',
+      '/teachers/$userId',
+      body: {'status': status},
+    );
   }
 
   static Future<Map<String, dynamic>> bulkDeleteUsers(List<int> userIds) async {
-    return await _makeRequest('POST', '/teachers/bulk-delete', body: {'teacher_ids': userIds});
+    return await _makeRequest(
+      'POST',
+      '/teachers/bulk-delete',
+      body: {'teacher_ids': userIds},
+    );
   }
 
   static Future<Map<String, dynamic>> exportUsersToCSV() async {
@@ -314,8 +392,10 @@ class ApiService {
 
       final uri = Uri.parse('$baseUrl/teachers/export/csv');
       final headers = await _getHeaders();
-      
-      final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 30));
+
+      final response = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return {'success': true, 'data': response.body};
@@ -332,11 +412,16 @@ class ApiService {
     return await _makeRequest('GET', '/organizations/');
   }
 
-  static Future<Map<String, dynamic>> createOrganization(Map<String, dynamic> orgData) async {
+  static Future<Map<String, dynamic>> createOrganization(
+    Map<String, dynamic> orgData,
+  ) async {
     return await _makeRequest('POST', '/organizations/', body: orgData);
   }
 
-  static Future<Map<String, dynamic>> updateOrganization(String orgId, Map<String, dynamic> orgData) async {
+  static Future<Map<String, dynamic>> updateOrganization(
+    String orgId,
+    Map<String, dynamic> orgData,
+  ) async {
     return await _makeRequest('PUT', '/organizations/$orgId', body: orgData);
   }
 
@@ -353,11 +438,16 @@ class ApiService {
     return await _makeRequest('GET', '/teachers/$teacherId');
   }
 
-  static Future<Map<String, dynamic>> createTeacher(Map<String, dynamic> teacherData) async {
+  static Future<Map<String, dynamic>> createTeacher(
+    Map<String, dynamic> teacherData,
+  ) async {
     return await _makeRequest('POST', '/teachers/', body: teacherData);
   }
 
-  static Future<Map<String, dynamic>> updateTeacher(int teacherId, Map<String, dynamic> teacherData) async {
+  static Future<Map<String, dynamic>> updateTeacher(
+    int teacherId,
+    Map<String, dynamic> teacherData,
+  ) async {
     return await _makeRequest('PUT', '/teachers/$teacherId', body: teacherData);
   }
 
@@ -374,11 +464,16 @@ class ApiService {
     return await _makeRequest('GET', '/classes/$classId');
   }
 
-  static Future<Map<String, dynamic>> createClass(Map<String, dynamic> classData) async {
+  static Future<Map<String, dynamic>> createClass(
+    Map<String, dynamic> classData,
+  ) async {
     return await _makeRequest('POST', '/classes/', body: classData);
   }
 
-  static Future<Map<String, dynamic>> updateClass(int classId, Map<String, dynamic> classData) async {
+  static Future<Map<String, dynamic>> updateClass(
+    int classId,
+    Map<String, dynamic> classData,
+  ) async {
     return await _makeRequest('PUT', '/classes/$classId', body: classData);
   }
 
@@ -397,11 +492,16 @@ class ApiService {
     return await _makeRequest('GET', '/students/$studentId');
   }
 
-  static Future<Map<String, dynamic>> createStudent(Map<String, dynamic> studentData) async {
+  static Future<Map<String, dynamic>> createStudent(
+    Map<String, dynamic> studentData,
+  ) async {
     return await _makeRequest('POST', '/students/', body: studentData);
   }
 
-  static Future<Map<String, dynamic>> updateStudent(int studentId, Map<String, dynamic> studentData) async {
+  static Future<Map<String, dynamic>> updateStudent(
+    int studentId,
+    Map<String, dynamic> studentData,
+  ) async {
     return await _makeRequest('PUT', '/students/$studentId', body: studentData);
   }
 
@@ -421,8 +521,12 @@ class ApiService {
       'full_name': name,
       'class_id': classId,
     };
-    
-    final createResult = await _makeRequest('POST', '/students/', body: studentData);
+
+    final createResult = await _makeRequest(
+      'POST',
+      '/students/',
+      body: studentData,
+    );
     if (!createResult['success']) {
       return createResult;
     }
@@ -464,7 +568,7 @@ class ApiService {
     if (classId != null) {
       fields['class_id'] = classId.toString();
     }
-    
+
     return await _makeRequest(
       'POST',
       '/face/verify',
@@ -506,12 +610,15 @@ class ApiService {
   }
 
   // Attendance endpoints
-  static Future<Map<String, dynamic>> markAttendance(Map<String, dynamic> attendanceData) async {
+  static Future<Map<String, dynamic>> markAttendance(
+    Map<String, dynamic> attendanceData,
+  ) async {
     final studentId = attendanceData['student_id'];
     final classId = attendanceData['class_id'];
     final confidenceScore = attendanceData['confidence_score'] ?? 0.0;
     final checkInType = attendanceData['check_in_type'] ?? 'morning';
-    final endpoint = '/attendance/mark?student_id=$studentId&class_id=$classId&confidence_score=$confidenceScore&check_in_type=$checkInType';
+    final endpoint =
+        '/attendance/mark?student_id=$studentId&class_id=$classId&confidence_score=$confidenceScore&check_in_type=$checkInType';
     return await _makeRequest('POST', endpoint);
   }
 
@@ -521,32 +628,45 @@ class ApiService {
     return await _makeRequest('GET', endpoint);
   }
 
-  static Future<Map<String, dynamic>> getAttendanceByClass(int classId, {String? date}) async {
+  static Future<Map<String, dynamic>> getAttendanceByClass(
+    int classId, {
+    String? date,
+  }) async {
     String endpoint = '/attendance/by-class/$classId';
     if (date != null) endpoint += '?date_filter=$date';
     return await _makeRequest('GET', endpoint);
   }
 
-  static Future<Map<String, dynamic>> getAttendanceSummary(int classId, {String? date}) async {
+  static Future<Map<String, dynamic>> getAttendanceSummary(
+    int classId, {
+    String? date,
+  }) async {
     String endpoint = '/attendance/summary/$classId';
     if (date != null) endpoint += '?date_filter=$date';
     return await _makeRequest('GET', endpoint);
   }
 
-  static Future<Map<String, dynamic>> getAttendanceHistory(DateTime? date) async {
+  static Future<Map<String, dynamic>> getAttendanceHistory(
+    DateTime? date,
+  ) async {
     String endpoint = '/attendance/history';
     if (date != null) {
-      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      final dateStr =
+          '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
       endpoint += '?date=$dateStr';
     }
     return await _makeRequest('GET', endpoint);
   }
 
-  static Future<Map<String, dynamic>> getAttendanceHistoryForClass(DateTime? date, {int? classId}) async {
+  static Future<Map<String, dynamic>> getAttendanceHistoryForClass(
+    DateTime? date, {
+    int? classId,
+  }) async {
     String endpoint = '/attendance/history';
     final params = <String>[];
     if (date != null) {
-      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      final dateStr =
+          '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
       params.add('date=$dateStr');
     }
     if (classId != null) {
@@ -559,18 +679,25 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> exportAttendanceCSV(DateTime date) async {
-    final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    final dateStr =
+        '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
     try {
       if (!await _hasConnection()) {
         return {'success': false, 'error': 'No internet connection'};
       }
       final uri = Uri.parse('$baseUrl/attendance/export/csv?date=$dateStr');
       final headers = await _getHeaders();
-      final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 30));
+      final response = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 30));
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return {'success': true, 'data': response.body};
       }
-      return {'success': false, 'error': 'Failed to export CSV', 'status_code': response.statusCode};
+      return {
+        'success': false,
+        'error': 'Failed to export CSV',
+        'status_code': response.statusCode,
+      };
     } catch (e) {
       return {'success': false, 'error': 'Connection error: ${e.toString()}'};
     }
@@ -581,20 +708,30 @@ class ApiService {
     required DateTime startDate,
     required DateTime endDate,
   }) async {
-    final start = '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
-    final end = '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
+    final start =
+        '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
+    final end =
+        '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
 
     try {
       if (!await _hasConnection()) {
         return {'success': false, 'error': 'No internet connection'};
       }
-      final uri = Uri.parse('$baseUrl/reports/attendance/$classId?start_date=$start&end_date=$end&format=csv');
+      final uri = Uri.parse(
+        '$baseUrl/reports/attendance/$classId?start_date=$start&end_date=$end&format=csv',
+      );
       final headers = await _getHeaders();
-      final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 30));
+      final response = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 30));
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return {'success': true, 'data': response.body};
       }
-      return {'success': false, 'error': 'Failed to export report CSV', 'status_code': response.statusCode};
+      return {
+        'success': false,
+        'error': 'Failed to export report CSV',
+        'status_code': response.statusCode,
+      };
     } catch (e) {
       return {'success': false, 'error': 'Connection error: ${e.toString()}'};
     }
@@ -605,7 +742,9 @@ class ApiService {
     return await _makeRequest('GET', '/dashboard/stats');
   }
 
-  static Future<Map<String, dynamic>> getRecentActivity({int limit = 10}) async {
+  static Future<Map<String, dynamic>> getRecentActivity({
+    int limit = 10,
+  }) async {
     return await _makeRequest('GET', '/dashboard/activity?limit=$limit');
   }
 
@@ -625,7 +764,11 @@ class ApiService {
     return await _makeRequest('GET', endpoint);
   }
 
-  static Future<Map<String, dynamic>> getStudentReport(String studentId, {String? startDate, String? endDate}) async {
+  static Future<Map<String, dynamic>> getStudentReport(
+    String studentId, {
+    String? startDate,
+    String? endDate,
+  }) async {
     String endpoint = '/reports/student/$studentId';
     List<String> params = [];
     if (startDate != null) params.add('start_date=$startDate');

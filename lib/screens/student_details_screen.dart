@@ -13,16 +13,26 @@ class StudentDetailsScreen extends ConsumerStatefulWidget {
   final int? studentId;
   final Map<String, dynamic> student;
 
-  const StudentDetailsScreen({super.key, this.studentId, this.student = const {}});
+  const StudentDetailsScreen({
+    super.key,
+    this.studentId,
+    this.student = const {},
+  });
 
   @override
-  ConsumerState<StudentDetailsScreen> createState() => _StudentDetailsScreenState();
+  ConsumerState<StudentDetailsScreen> createState() =>
+      _StudentDetailsScreenState();
 }
+
+enum _StudentReportRangePreset { thisMonth, last30Days, last90Days, custom }
 
 class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
   int? _studentId;
   Map<String, dynamic> _student = {};
   Map<String, dynamic> _report = {};
+
+  _StudentReportRangePreset _rangePreset = _StudentReportRangePreset.thisMonth;
+  DateTimeRange? _customRange;
 
   bool _loading = true;
   String? _error;
@@ -35,14 +45,23 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
     super.initState();
 
     _student = Map<String, dynamic>.from(widget.student);
-    _studentId = widget.studentId ?? _toInt(widget.student['id'] ?? widget.student['student_pk'] ?? widget.student['studentId']);
+    _studentId =
+        widget.studentId ??
+        _toInt(
+          widget.student['id'] ??
+              widget.student['student_pk'] ??
+              widget.student['studentId'],
+        );
 
-    _attendanceRefreshSubscription = ref.listenManual<int>(attendanceRefreshProvider, (previous, next) {
-      if (!mounted) return;
-      if (_studentId != null) {
-        _loadReport(showSpinner: false);
-      }
-    });
+    _attendanceRefreshSubscription = ref.listenManual<int>(
+      attendanceRefreshProvider,
+      (previous, next) {
+        if (!mounted) return;
+        if (_studentId != null) {
+          _loadReport(showSpinner: false);
+        }
+      },
+    );
 
     if (_studentId == null) {
       _loading = false;
@@ -65,6 +84,74 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
     return role == 'admin' || role == 'super_admin';
   }
 
+  DateTimeRange get _activeRange {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    switch (_rangePreset) {
+      case _StudentReportRangePreset.thisMonth:
+        return DateTimeRange(
+          start: DateTime(today.year, today.month, 1),
+          end: today,
+        );
+      case _StudentReportRangePreset.last30Days:
+        return DateTimeRange(
+          start: today.subtract(const Duration(days: 30)),
+          end: today,
+        );
+      case _StudentReportRangePreset.last90Days:
+        return DateTimeRange(
+          start: today.subtract(const Duration(days: 90)),
+          end: today,
+        );
+      case _StudentReportRangePreset.custom:
+        return _customRange ??
+            DateTimeRange(
+              start: DateTime(today.year, today.month, 1),
+              end: today,
+            );
+    }
+  }
+
+  String _dateParam(DateTime date) {
+    return DateFormat('yyyy-MM-dd').format(date);
+  }
+
+  String _rangeLabel(DateTimeRange range) {
+    final fmt = DateFormat.yMMMd();
+    return '${fmt.format(range.start)} - ${fmt.format(range.end)}';
+  }
+
+  Future<void> _setRangePreset(_StudentReportRangePreset preset) async {
+    if (preset == _StudentReportRangePreset.custom) {
+      await _pickCustomRange();
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _rangePreset = preset);
+    await _loadReport(showSpinner: true);
+  }
+
+  Future<void> _pickCustomRange() async {
+    final lastDate = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(lastDate.year, lastDate.month, lastDate.day),
+      initialDateRange: _customRange ?? _activeRange,
+    );
+    if (picked == null) return;
+    if (!mounted) return;
+
+    setState(() {
+      _rangePreset = _StudentReportRangePreset.custom;
+      _customRange = picked;
+    });
+
+    await _loadReport(showSpinner: true);
+  }
+
   Future<void> _loadAll({bool showSpinner = true}) async {
     final id = _studentId;
     if (id == null) return;
@@ -77,9 +164,14 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
     }
 
     try {
+      final range = _activeRange;
       final results = await Future.wait([
         ApiService.getStudentById(id),
-        ApiService.getStudentReport(id.toString()),
+        ApiService.getStudentReport(
+          id.toString(),
+          startDate: _dateParam(range.start),
+          endDate: _dateParam(range.end),
+        ),
       ]);
 
       final studentRes = results[0];
@@ -87,10 +179,12 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
 
       if (!mounted) return;
 
-      final nextStudent = (studentRes['success'] == true && studentRes['data'] is Map)
+      final nextStudent =
+          (studentRes['success'] == true && studentRes['data'] is Map)
           ? Map<String, dynamic>.from(studentRes['data'] as Map)
           : _student;
-      final nextReport = (reportRes['success'] == true && reportRes['data'] is Map)
+      final nextReport =
+          (reportRes['success'] == true && reportRes['data'] is Map)
           ? Map<String, dynamic>.from(reportRes['data'] as Map)
           : <String, dynamic>{};
 
@@ -98,7 +192,9 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
         _student = nextStudent;
         _report = nextReport;
         _loading = false;
-        _error = studentRes['success'] == true ? null : (studentRes['error']?.toString() ?? 'Failed to load student');
+        _error = studentRes['success'] == true
+            ? null
+            : (studentRes['error']?.toString() ?? 'Failed to load student');
       });
     } catch (e) {
       if (!mounted) return;
@@ -121,7 +217,12 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
     }
 
     try {
-      final reportRes = await ApiService.getStudentReport(id.toString());
+      final range = _activeRange;
+      final reportRes = await ApiService.getStudentReport(
+        id.toString(),
+        startDate: _dateParam(range.start),
+        endDate: _dateParam(range.end),
+      );
       if (!mounted) return;
 
       if (reportRes['success'] == true && reportRes['data'] is Map) {
@@ -137,6 +238,84 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  Widget _buildRangeCard(ThemeData theme) {
+    final range = _activeRange;
+    final label = _rangeLabel(range);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.dividerColor.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.date_range, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Report Range',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              ChoiceChip(
+                label: const Text('This Month'),
+                selected: _rangePreset == _StudentReportRangePreset.thisMonth,
+                onSelected: _busyAction
+                    ? null
+                    : (selected) {
+                        if (!selected) return;
+                        _setRangePreset(_StudentReportRangePreset.thisMonth);
+                      },
+              ),
+              ChoiceChip(
+                label: const Text('30 Days'),
+                selected: _rangePreset == _StudentReportRangePreset.last30Days,
+                onSelected: _busyAction
+                    ? null
+                    : (selected) {
+                        if (!selected) return;
+                        _setRangePreset(_StudentReportRangePreset.last30Days);
+                      },
+              ),
+              ChoiceChip(
+                label: const Text('90 Days'),
+                selected: _rangePreset == _StudentReportRangePreset.last90Days,
+                onSelected: _busyAction
+                    ? null
+                    : (selected) {
+                        if (!selected) return;
+                        _setRangePreset(_StudentReportRangePreset.last90Days);
+                      },
+              ),
+              ChoiceChip(
+                label: const Text('Custom'),
+                selected: _rangePreset == _StudentReportRangePreset.custom,
+                onSelected: _busyAction ? null : (_) => _pickCustomRange(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _updateFace() async {
@@ -194,7 +373,8 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
     final confirmed = await UIHelpers.showConfirmDialog(
       context: context,
       title: 'Delete student',
-      message: 'Are you sure you want to delete this student? This cannot be undone.',
+      message:
+          'Are you sure you want to delete this student? This cannot be undone.',
       confirmText: 'Delete',
       isDangerous: true,
     );
@@ -221,9 +401,11 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final name = (_student['full_name'] ?? _student['name'] ?? 'Student').toString();
+    final name = (_student['full_name'] ?? _student['name'] ?? 'Student')
+        .toString();
     final studentCode = (_student['student_id'] ?? '').toString();
-    final className = (_student['class_name'] ?? _student['className'] ?? '').toString();
+    final className = (_student['class_name'] ?? _student['className'] ?? '')
+        .toString();
     final faceEnrolled = _student['face_enrolled'] == true;
     final photoUrl = ApiService.uploadsUrl(_student['photo_path']?.toString());
 
@@ -233,8 +415,16 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed: _studentId == null ? null : () => _loadAll(showSpinner: true),
-            icon: _loading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.refresh),
+            onPressed: _studentId == null
+                ? null
+                : () => _loadAll(showSpinner: true),
+            icon: _loading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
           ),
           if (_isAdmin && _studentId != null)
             PopupMenuButton<String>(
@@ -256,7 +446,10 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
           else if (_loading && _student.isEmpty)
             const Center(child: CircularProgressIndicator())
           else if (_error != null && _student.isEmpty)
-            _ErrorState(message: _error!, onRetry: () => _loadAll(showSpinner: true))
+            _ErrorState(
+              message: _error!,
+              onRetry: () => _loadAll(showSpinner: true),
+            )
           else
             RefreshIndicator(
               onRefresh: () => _loadAll(showSpinner: false),
@@ -270,6 +463,8 @@ class _StudentDetailsScreenState extends ConsumerState<StudentDetailsScreen> {
                     faceEnrolled: faceEnrolled,
                     photoUrl: photoUrl,
                   ),
+                  const SizedBox(height: 16),
+                  _buildRangeCard(theme),
                   const SizedBox(height: 16),
                   _AttendanceSummaryCard(report: _report),
                   const SizedBox(height: 16),
@@ -359,7 +554,11 @@ class _StudentHeaderCard extends StatelessWidget {
               child: photoUrl == null
                   ? Center(
                       child: faceEnrolled
-                          ? const Icon(Icons.check_circle, color: Colors.green, size: 30)
+                          ? const Icon(
+                              Icons.check_circle,
+                              color: Colors.green,
+                              size: 30,
+                            )
                           : Text(
                               name.isNotEmpty ? name[0].toUpperCase() : '?',
                               style: TextStyle(
@@ -375,7 +574,11 @@ class _StudentHeaderCard extends StatelessWidget {
                       errorBuilder: (context, error, stackTrace) {
                         return Center(
                           child: faceEnrolled
-                              ? const Icon(Icons.check_circle, color: Colors.green, size: 30)
+                              ? const Icon(
+                                  Icons.check_circle,
+                                  color: Colors.green,
+                                  size: 30,
+                                )
                               : Text(
                                   name.isNotEmpty ? name[0].toUpperCase() : '?',
                                   style: TextStyle(
@@ -407,16 +610,25 @@ class _StudentHeaderCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  name,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 6),
                 Text(
                   studentId.isEmpty ? 'ID: —' : 'ID: $studentId',
-                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.hintColor,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   className.isEmpty ? 'Class: —' : 'Class: $className',
-                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.hintColor,
+                  ),
                 ),
               ],
             ),
@@ -453,12 +665,25 @@ class _AttendanceSummaryCard extends StatelessWidget {
     final theme = Theme.of(context);
 
     final totalDays = _readInt(report, ['total_days', 'totalDays']);
-    final daysPresent = _readInt(report, ['days_present', 'present_days', 'present']);
-    final daysAbsent = _readInt(report, ['days_absent', 'absent_days', 'absent']);
-    final attendanceRate = _readDouble(report, ['attendance_rate', 'attendanceRate']);
+    final daysPresent = _readInt(report, [
+      'days_present',
+      'present_days',
+      'present',
+    ]);
+    final daysAbsent = _readInt(report, [
+      'days_absent',
+      'absent_days',
+      'absent',
+    ]);
+    final attendanceRate = _readDouble(report, [
+      'attendance_rate',
+      'attendanceRate',
+    ]);
 
     final safeTotal = totalDays > 0 ? totalDays : (daysPresent + daysAbsent);
-    final safeRate = attendanceRate > 0 ? attendanceRate : (safeTotal > 0 ? (daysPresent / safeTotal) * 100 : 0.0);
+    final safeRate = attendanceRate > 0
+        ? attendanceRate
+        : (safeTotal > 0 ? (daysPresent / safeTotal) * 100 : 0.0);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -474,17 +699,40 @@ class _AttendanceSummaryCard extends StatelessWidget {
             children: [
               const Icon(Icons.insights, size: 18),
               const SizedBox(width: 8),
-              Text('Attendance Summary', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                'Attendance Summary',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _StatTile(label: 'Present', value: daysPresent.toString(), color: Colors.green)),
+              Expanded(
+                child: _StatTile(
+                  label: 'Present',
+                  value: daysPresent.toString(),
+                  color: Colors.green,
+                ),
+              ),
               const SizedBox(width: 10),
-              Expanded(child: _StatTile(label: 'Absent', value: daysAbsent.toString(), color: Colors.red)),
+              Expanded(
+                child: _StatTile(
+                  label: 'Absent',
+                  value: daysAbsent.toString(),
+                  color: Colors.red,
+                ),
+              ),
               const SizedBox(width: 10),
-              Expanded(child: _StatTile(label: 'Total', value: safeTotal.toString(), color: theme.colorScheme.primary)),
+              Expanded(
+                child: _StatTile(
+                  label: 'Total',
+                  value: safeTotal.toString(),
+                  color: theme.colorScheme.primary,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 14),
@@ -516,7 +764,9 @@ class _AttendanceHistoryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final raw = report['attendance_history'];
-    final history = raw is List ? List<Map<String, dynamic>>.from(raw.whereType<Map>()) : <Map<String, dynamic>>[];
+    final history = raw is List
+        ? List<Map<String, dynamic>>.from(raw.whereType<Map>())
+        : <Map<String, dynamic>>[];
 
     history.sort((a, b) {
       final da = (a['date'] ?? '').toString();
@@ -540,32 +790,53 @@ class _AttendanceHistoryCard extends StatelessWidget {
             children: [
               const Icon(Icons.history, size: 18),
               const SizedBox(width: 8),
-              Text('Recent Attendance', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                'Recent Attendance',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
           if (history.isEmpty)
-            Text('No attendance history found.', style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor))
+            Text(
+              'No attendance history found.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.hintColor,
+              ),
+            )
           else
             ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: history.length.clamp(0, 30),
-              separatorBuilder: (context, index) => Divider(height: 16, color: theme.dividerColor.withOpacity(0.2)),
+              separatorBuilder: (context, index) => Divider(
+                height: 16,
+                color: theme.dividerColor.withOpacity(0.2),
+              ),
               itemBuilder: (context, index) {
                 final item = history[index];
                 final dateText = _formatDate(item['date']?.toString());
                 final timeText = _formatTime(item['time']?.toString());
                 final status = (item['status'] ?? 'present').toString();
-                final confidence = _readDouble(item, ['confidence', 'confidence_score']);
-                final color = status.toLowerCase() == 'absent' ? Colors.red : Colors.green;
+                final confidence = _readDouble(item, [
+                  'confidence',
+                  'confidence_score',
+                ]);
+                final color = status.toLowerCase() == 'absent'
+                    ? Colors.red
+                    : Colors.green;
 
                 return Row(
                   children: [
                     Container(
                       width: 10,
                       height: 10,
-                      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -574,26 +845,35 @@ class _AttendanceHistoryCard extends StatelessWidget {
                         children: [
                           Text(
                             dateText,
-                            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             timeText.isEmpty ? status : '$status • $timeText',
-                            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.hintColor,
+                            ),
                           ),
                         ],
                       ),
                     ),
                     if (confidence > 0)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: theme.dividerColor.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
                           '${(confidence * 100).toStringAsFixed(0)}%',
-                          style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                   ],
@@ -611,7 +891,11 @@ class _StatTile extends StatelessWidget {
   final String value;
   final Color color;
 
-  const _StatTile({required this.label, required this.value, required this.color});
+  const _StatTile({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -626,9 +910,20 @@ class _StatTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: theme.textTheme.bodySmall?.copyWith(color: color, fontWeight: FontWeight.w700)),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           const SizedBox(height: 6),
-          Text(value, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          Text(
+            value,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ],
       ),
     );
@@ -682,7 +977,11 @@ class _CameraCaptureDialogState extends State<_CameraCaptureDialog> {
   @override
   void initState() {
     super.initState();
-    _controller = CameraController(widget.camera, ResolutionPreset.medium, enableAudio: false);
+    _controller = CameraController(
+      widget.camera,
+      ResolutionPreset.medium,
+      enableAudio: false,
+    );
     _controller!.initialize().then((_) {
       if (!mounted) return;
       setState(() {});
@@ -739,7 +1038,7 @@ class _CameraCaptureDialogState extends State<_CameraCaptureDialog> {
                           try {
                             final photo = await controller.takePicture();
                             if (!mounted) return;
-                            Navigator.of(context).pop(photo);
+                            Navigator.of(this.context).pop(photo);
                           } catch (_) {
                             if (!mounted) return;
                             setState(() => _capturing = false);
@@ -749,7 +1048,10 @@ class _CameraCaptureDialogState extends State<_CameraCaptureDialog> {
                       ? const SizedBox(
                           width: 22,
                           height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
                       : const Icon(Icons.camera_alt),
                 ),

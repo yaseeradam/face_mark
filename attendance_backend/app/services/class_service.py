@@ -54,14 +54,22 @@ class ClassService:
         
         # Admin can access all classes in their org; super admin can access all
         teacher = crud.get_teacher_by_id(db, teacher_id)
-        if not teacher or teacher.organization_id is None:
+        if not teacher:
             return False
+
+        # Super admins can access everything, even if organization_id is unset.
+        if teacher.role == "super_admin":
+            return True
+
+        if teacher.organization_id is None:
+            return False
+
+        # Backward-compatible: allow access to legacy classes missing org linkage.
         if class_obj.organization_id is None:
-            return False
-        if teacher and teacher.role in ["admin", "super_admin"]:
-            if teacher.role == "super_admin":
-                return True
-            return class_obj.organization_id is not None and class_obj.organization_id == teacher.organization_id
+            return teacher.role == "admin" or class_obj.teacher_id == teacher_id
+
+        if teacher.role == "admin":
+            return class_obj.organization_id == teacher.organization_id
         
         # Teacher can only access their own classes
         return class_obj.teacher_id == teacher_id and class_obj.organization_id == teacher.organization_id

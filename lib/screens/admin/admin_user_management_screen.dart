@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/api_service.dart';
 import '../../providers/app_providers.dart';
-import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -11,10 +10,12 @@ class AdminUserManagementScreen extends ConsumerStatefulWidget {
   const AdminUserManagementScreen({super.key});
 
   @override
-  ConsumerState<AdminUserManagementScreen> createState() => _AdminUserManagementScreenState();
+  ConsumerState<AdminUserManagementScreen> createState() =>
+      _AdminUserManagementScreenState();
 }
 
-class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementScreen> {
+class _AdminUserManagementScreenState
+    extends ConsumerState<AdminUserManagementScreen> {
   List<Map<String, dynamic>> _users = [];
   Set<int> _selectedUserIds = {};
   bool _isLoading = true;
@@ -45,7 +46,10 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['error'] ?? 'Failed to load users'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(result['error'] ?? 'Failed to load users'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -53,8 +57,15 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
 
   List<Map<String, dynamic>> get _filteredUsers {
     return _users.where((user) {
-      final matchesSearch = user['full_name']?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false ||
-          user['email']?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false;
+      final matchesSearch =
+          user['full_name']?.toLowerCase().contains(
+            _searchQuery.toLowerCase(),
+          ) ??
+          false ||
+              user['email']?.toLowerCase().contains(
+                _searchQuery.toLowerCase(),
+              ) ??
+          false;
       final matchesRole = _filterRole == 'all' || user['role'] == _filterRole;
       return matchesSearch && matchesRole;
     }).toList();
@@ -65,7 +76,9 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
       if (_selectAll) {
         _selectedUserIds.clear();
       } else {
-        _selectedUserIds = _filteredUsers.map((user) => user['id'] as int).toSet();
+        _selectedUserIds = _filteredUsers
+            .map((user) => user['id'] as int)
+            .toSet();
       }
       _selectAll = !_selectAll;
     });
@@ -89,7 +102,9 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Multiple Users'),
-        content: Text('Are you sure you want to delete ${_selectedUserIds.length} user(s)? This action cannot be undone.'),
+        content: Text(
+          'Are you sure you want to delete ${_selectedUserIds.length} user(s)? This action cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -105,11 +120,17 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
     );
 
     if (confirmed == true) {
-      final result = await ApiService.bulkDeleteUsers(_selectedUserIds.toList());
+      final result = await ApiService.bulkDeleteUsers(
+        _selectedUserIds.toList(),
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['success'] ? result['message'] ?? 'Users deleted successfully' : result['error'] ?? 'Failed to delete users'),
+            content: Text(
+              result['success']
+                  ? result['message'] ?? 'Users deleted successfully'
+                  : result['error'] ?? 'Failed to delete users',
+            ),
             backgroundColor: result['success'] ? Colors.green : Colors.red,
           ),
         );
@@ -128,7 +149,10 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
         if (!status.isGranted) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Storage permission required'), backgroundColor: Colors.red),
+              const SnackBar(
+                content: Text('Storage permission required'),
+                backgroundColor: Colors.red,
+              ),
             );
           }
           return;
@@ -137,10 +161,10 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
 
       // Download CSV
       final result = await ApiService.exportUsersToCSV();
-      
+
       if (result['success'] && result['data'] != null) {
         final csvContent = result['data'] as String;
-        
+
         // Save to Downloads folder
         Directory? directory;
         if (Platform.isAndroid) {
@@ -165,7 +189,10 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(result['error'] ?? 'Failed to export CSV'), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text(result['error'] ?? 'Failed to export CSV'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       }
@@ -208,7 +235,9 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete User'),
-        content: Text('Are you sure you want to delete $userName? This action cannot be undone.'),
+        content: Text(
+          'Are you sure you want to delete $userName? This action cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -228,7 +257,11 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['success'] ? 'User deleted successfully' : result['error'] ?? 'Failed to delete user'),
+            content: Text(
+              result['success']
+                  ? 'User deleted successfully'
+                  : result['error'] ?? 'Failed to delete user',
+            ),
             backgroundColor: result['success'] ? Colors.green : Colors.red,
           ),
         );
@@ -243,7 +276,11 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(result['success'] ? 'User status updated' : result['error'] ?? 'Failed to update status'),
+          content: Text(
+            result['success']
+                ? 'User status updated'
+                : result['error'] ?? 'Failed to update status',
+          ),
           backgroundColor: result['success'] ? Colors.green : Colors.red,
         ),
       );
@@ -255,14 +292,13 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final role = (ref.watch(authProvider).user?['role'] ?? 'teacher').toString();
+    final role = (ref.watch(authProvider).user?['role'] ?? 'teacher')
+        .toString();
     final isAdmin = role == 'admin' || role == 'super_admin';
 
     if (!isAdmin) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('User Management'),
-        ),
+        appBar: AppBar(title: const Text('User Management')),
         body: Center(
           child: Text(
             "Access restricted to administrators",
@@ -297,7 +333,11 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
             decoration: BoxDecoration(
               color: theme.cardColor,
               boxShadow: [
-                 BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 4)),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 4,
+                  offset: const Offset(0, 4),
+                ),
               ],
             ),
             child: Column(
@@ -310,11 +350,17 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
                           hintText: 'Search...',
                           prefixIcon: const Icon(Icons.search),
                           isDense: true,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
                           filled: true,
-                          fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
+                          fillColor: isDark
+                              ? Colors.grey[800]
+                              : Colors.grey[100],
                         ),
-                        onChanged: (value) => setState(() => _searchQuery = value),
+                        onChanged: (value) =>
+                            setState(() => _searchQuery = value),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -326,15 +372,22 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
-                        value: _filterRole,
-                        icon: const Icon(Icons.filter_list, size: 20),
-                        items: const [
-                          DropdownMenuItem(value: 'all', child: Text('All')),
-                          DropdownMenuItem(value: 'admin', child: Text('Admins')),
-                          DropdownMenuItem(value: 'teacher', child: Text('Teachers')),
-                        ],
-                        onChanged: (value) => setState(() => _filterRole = value!),
-                      ),
+                          value: _filterRole,
+                          icon: const Icon(Icons.filter_list, size: 20),
+                          items: const [
+                            DropdownMenuItem(value: 'all', child: Text('All')),
+                            DropdownMenuItem(
+                              value: 'admin',
+                              child: Text('Admins'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'teacher',
+                              child: Text('Teachers'),
+                            ),
+                          ],
+                          onChanged: (value) =>
+                              setState(() => _filterRole = value!),
+                        ),
                       ),
                     ),
                   ],
@@ -353,15 +406,31 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Text('Select All (${_filteredUsers.length})', style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.bold)),
+                        Text(
+                          'Select All (${_filteredUsers.length})',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         const Spacer(),
                         if (_selectedUserIds.isNotEmpty)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                             child: Text(
                               '${_selectedUserIds.length} Selected',
-                              style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 12),
+                              style: TextStyle(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
                       ],
@@ -374,38 +443,51 @@ class _AdminUserManagementScreenState extends ConsumerState<AdminUserManagementS
           Expanded(
             child: RefreshIndicator(
               onRefresh: _loadUsers,
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _filteredUsers.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.search_off, size: 64, color: Colors.grey[300]),
-                            const SizedBox(height: 16),
-                            Text('No users found', style: TextStyle(color: Colors.grey[500])),
-                          ],
-                        ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _filteredUsers.length,
-                        separatorBuilder: (c, i) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final user = _filteredUsers[index];
-                          final userId = user['id'] as int;
-                          final isSelected = _selectedUserIds.contains(userId);
-                          
-                          return _UserCard(
-                            user: user,
-                            isSelected: isSelected,
-                            onToggleSelection: () => _toggleUserSelection(userId),
-                            onEdit: () => _showEditUserDialog(user),
-                            onDelete: () => _deleteUser(user['id'].toString(), user['full_name'] ?? ''),
-                            onToggleStatus: () => _toggleUserStatus(user['id'].toString(), user['status'] ?? 'active'),
-                          );
-                        },
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filteredUsers.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.search_off,
+                            size: 64,
+                            color: Colors.grey[300],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No users found',
+                            style: TextStyle(color: Colors.grey[500]),
+                          ),
+                        ],
                       ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _filteredUsers.length,
+                      separatorBuilder: (c, i) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final user = _filteredUsers[index];
+                        final userId = user['id'] as int;
+                        final isSelected = _selectedUserIds.contains(userId);
+
+                        return _UserCard(
+                          user: user,
+                          isSelected: isSelected,
+                          onToggleSelection: () => _toggleUserSelection(userId),
+                          onEdit: () => _showEditUserDialog(user),
+                          onDelete: () => _deleteUser(
+                            user['id'].toString(),
+                            user['full_name'] ?? '',
+                          ),
+                          onToggleStatus: () => _toggleUserStatus(
+                            user['id'].toString(),
+                            user['status'] ?? 'active',
+                          ),
+                        );
+                      },
+                    ),
             ),
           ),
         ],
@@ -449,14 +531,22 @@ class _UserCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       child: Container(
         decoration: BoxDecoration(
-          color: isSelected ? theme.colorScheme.primaryContainer.withOpacity(0.2) : theme.cardColor,
+          color: isSelected
+              ? theme.colorScheme.primaryContainer.withOpacity(0.2)
+              : theme.cardColor,
           borderRadius: BorderRadius.circular(16),
-          border: isSelected 
-              ? Border.all(color: theme.colorScheme.primary) 
+          border: isSelected
+              ? Border.all(color: theme.colorScheme.primary)
               : Border.all(color: isDark ? Colors.white10 : Colors.grey[200]!),
-          boxShadow: isSelected ? [] : [
-             BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 2))
-          ],
+          boxShadow: isSelected
+              ? []
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.02),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
         ),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -464,22 +554,24 @@ class _UserCard extends StatelessWidget {
             children: [
               // Avatar
               Container(
-                 width: 48,
-                 height: 48,
-                 decoration: BoxDecoration(
-                    color: isActive ? theme.colorScheme.primary.withOpacity(0.1) : Colors.grey[200],
-                    shape: BoxShape.circle,
-                 ),
-                 child: Center(
-                    child: Text(
-                      (user['full_name'] ?? 'U')[0].toUpperCase(),
-                       style: TextStyle(
-                          color: isActive ? theme.colorScheme.primary : Colors.grey, 
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20
-                       ),
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? theme.colorScheme.primary.withOpacity(0.1)
+                      : Colors.grey[200],
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    (user['full_name'] ?? 'U')[0].toUpperCase(),
+                    style: TextStyle(
+                      color: isActive ? theme.colorScheme.primary : Colors.grey,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
                     ),
-                 ),
+                  ),
+                ),
               ),
               const SizedBox(width: 16),
               // Info
@@ -489,50 +581,82 @@ class _UserCard extends StatelessWidget {
                   children: [
                     Text(
                       user['full_name'] ?? 'Unknown',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                     Text(
-                       user['email'] ?? 'No Email',
-                       style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                      user['email'] ?? 'No Email',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
                     ),
-                    if ((user['organization_name'] ?? user['organization_id']) != null)
+                    if ((user['organization_name'] ??
+                            user['organization_id']) !=
+                        null)
                       Text(
                         'Org: ${user['organization_name'] ?? user['organization_id']}',
                         style: TextStyle(color: Colors.grey[600], fontSize: 12),
                       ),
                     const SizedBox(height: 6),
                     Row(
-                       children: [
-                          _buildBadge(role, role == 'ADMIN' ? Colors.purple : Colors.blue),
-                          const SizedBox(width: 8),
-                          _buildBadge(isActive ? 'ACTIVE' : 'INACTIVE', isActive ? Colors.green : Colors.red),
-                       ],
-                    )
+                      children: [
+                        _buildBadge(
+                          role,
+                          role == 'ADMIN' ? Colors.purple : Colors.blue,
+                        ),
+                        const SizedBox(width: 8),
+                        _buildBadge(
+                          isActive ? 'ACTIVE' : 'INACTIVE',
+                          isActive ? Colors.green : Colors.red,
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
               // Actions
               if (isSelected)
-                 Checkbox(value: true, onChanged: (v) => onToggleSelection())
+                Checkbox(value: true, onChanged: (v) => onToggleSelection())
               else
-                 PopupMenuButton(
-                    icon: const Icon(Icons.more_vert, color: Colors.grey),
-                    itemBuilder: (context) => <PopupMenuEntry>[
-                       PopupMenuItem(
-                          onTap: onEdit,
-                          child: const Row(children: [Icon(Icons.edit, size: 18), SizedBox(width: 8), Text('Edit')]),
-                       ),
-                       PopupMenuItem(
-                          onTap: onToggleStatus,
-                          child: Row(children: [Icon(isActive ? Icons.block : Icons.check_circle, size: 18), const SizedBox(width: 8), Text(isActive ? 'Deactivate' : 'Activate')]),
-                       ),
-                       const PopupMenuDivider(),
-                       PopupMenuItem(
-                          onTap: onDelete,
-                          child: const Row(children: [Icon(Icons.delete, color: Colors.red, size: 18), SizedBox(width: 8), Text('Delete', style: TextStyle(color: Colors.red))]),
-                       ),
-                    ],
-                 )
+                PopupMenuButton(
+                  icon: const Icon(Icons.more_vert, color: Colors.grey),
+                  itemBuilder: (context) => <PopupMenuEntry>[
+                    PopupMenuItem(
+                      onTap: onEdit,
+                      child: const Row(
+                        children: [
+                          Icon(Icons.edit, size: 18),
+                          SizedBox(width: 8),
+                          Text('Edit'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      onTap: onToggleStatus,
+                      child: Row(
+                        children: [
+                          Icon(
+                            isActive ? Icons.block : Icons.check_circle,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(isActive ? 'Deactivate' : 'Activate'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      onTap: onDelete,
+                      child: const Row(
+                        children: [
+                          Icon(Icons.delete, color: Colors.red, size: 18),
+                          SizedBox(width: 8),
+                          Text('Delete', style: TextStyle(color: Colors.red)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
         ),
@@ -541,14 +665,21 @@ class _UserCard extends StatelessWidget {
   }
 
   Widget _buildBadge(String text, Color color) {
-     return Container(
-       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-       decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-       ),
-       child: Text(text, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
-     );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
   }
 }
 
@@ -579,8 +710,12 @@ class _AddEditUserDialogState extends State<_AddEditUserDialog> {
   @override
   void initState() {
     super.initState();
-    _userIdController = TextEditingController(text: widget.user?['user_id'] ?? '');
-    _fullNameController = TextEditingController(text: widget.user?['full_name'] ?? '');
+    _userIdController = TextEditingController(
+      text: widget.user?['user_id'] ?? '',
+    );
+    _fullNameController = TextEditingController(
+      text: widget.user?['full_name'] ?? '',
+    );
     _emailController = TextEditingController(text: widget.user?['email'] ?? '');
     _passwordController = TextEditingController();
     _confirmPasswordController = TextEditingController();
@@ -615,7 +750,6 @@ class _AddEditUserDialogState extends State<_AddEditUserDialog> {
       userData['password'] = _passwordController.text;
     }
 
-    final String endpoint = '/teachers/';
     final result = widget.user == null
         ? await ApiService.createUser(userData)
         : await ApiService.updateUser(widget.user!['id'].toString(), userData);
@@ -625,11 +759,13 @@ class _AddEditUserDialogState extends State<_AddEditUserDialog> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(result['success']
-              ? widget.user == null
-                  ? 'User created successfully'
-                  : 'User updated successfully'
-              : result['error'] ?? 'Operation failed'),
+          content: Text(
+            result['success']
+                ? widget.user == null
+                      ? 'User created successfully'
+                      : 'User updated successfully'
+                : result['error'] ?? 'Operation failed',
+          ),
           backgroundColor: result['success'] ? Colors.green : Colors.red,
         ),
       );
@@ -656,7 +792,9 @@ class _AddEditUserDialogState extends State<_AddEditUserDialog> {
               children: [
                 Text(
                   isEdit ? 'Edit User' : 'Add New User',
-                  style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 TextFormField(
@@ -667,7 +805,8 @@ class _AddEditUserDialogState extends State<_AddEditUserDialog> {
                     prefixIcon: Icon(Icons.badge_outlined),
                     border: OutlineInputBorder(),
                   ),
-                  validator: (value) => value?.isEmpty ?? true ? 'User ID is required' : null,
+                  validator: (value) =>
+                      value?.isEmpty ?? true ? 'User ID is required' : null,
                   enabled: !isEdit,
                 ),
                 const SizedBox(height: 16),
@@ -679,7 +818,8 @@ class _AddEditUserDialogState extends State<_AddEditUserDialog> {
                     prefixIcon: Icon(Icons.person_outline),
                     border: OutlineInputBorder(),
                   ),
-                  validator: (value) => value?.isEmpty ?? true ? 'Full name is required' : null,
+                  validator: (value) =>
+                      value?.isEmpty ?? true ? 'Full name is required' : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -693,7 +833,9 @@ class _AddEditUserDialogState extends State<_AddEditUserDialog> {
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
                     if (value?.isEmpty ?? true) return 'Email is required';
-                    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value!)) {
+                    if (!RegExp(
+                      r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                    ).hasMatch(value!)) {
                       return 'Invalid email format';
                     }
                     return null;
@@ -703,18 +845,26 @@ class _AddEditUserDialogState extends State<_AddEditUserDialog> {
                 TextFormField(
                   controller: _passwordController,
                   decoration: InputDecoration(
-                    labelText: isEdit ? 'New Password (leave blank to keep current)' : 'Password',
+                    labelText: isEdit
+                        ? 'New Password (leave blank to keep current)'
+                        : 'Password',
                     hintText: '••••••••',
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
                     ),
                     border: const OutlineInputBorder(),
                   ),
                   obscureText: _obscurePassword,
                   validator: (value) {
-                    if (!isEdit && (value?.isEmpty ?? true)) return 'Password is required';
+                    if (!isEdit && (value?.isEmpty ?? true))
+                      return 'Password is required';
                     if (value != null && value.isNotEmpty && value.length < 6) {
                       return 'Password must be at least 6 characters';
                     }
@@ -729,14 +879,22 @@ class _AddEditUserDialogState extends State<_AddEditUserDialog> {
                     hintText: '••••••••',
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscureConfirmPassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                      onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                      icon: Icon(
+                        _obscureConfirmPassword
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                      onPressed: () => setState(
+                        () =>
+                            _obscureConfirmPassword = !_obscureConfirmPassword,
+                      ),
                     ),
                     border: const OutlineInputBorder(),
                   ),
                   obscureText: _obscureConfirmPassword,
                   validator: (value) {
-                    if (_passwordController.text.isNotEmpty && value != _passwordController.text) {
+                    if (_passwordController.text.isNotEmpty &&
+                        value != _passwordController.text) {
                       return 'Passwords do not match';
                     }
                     return null;
@@ -766,7 +924,10 @@ class _AddEditUserDialogState extends State<_AddEditUserDialog> {
                   ),
                   items: const [
                     DropdownMenuItem(value: 'active', child: Text('Active')),
-                    DropdownMenuItem(value: 'inactive', child: Text('Inactive')),
+                    DropdownMenuItem(
+                      value: 'inactive',
+                      child: Text('Inactive'),
+                    ),
                   ],
                   onChanged: (value) => setState(() => _status = value!),
                 ),
@@ -775,7 +936,9 @@ class _AddEditUserDialogState extends State<_AddEditUserDialog> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     TextButton(
-                      onPressed: _isLoading ? null : () => Navigator.pop(context),
+                      onPressed: _isLoading
+                          ? null
+                          : () => Navigator.pop(context),
                       child: const Text('Cancel'),
                     ),
                     const SizedBox(width: 12),

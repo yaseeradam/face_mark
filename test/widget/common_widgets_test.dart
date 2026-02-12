@@ -4,12 +4,12 @@ import 'package:frontalminds_fr/widgets/common_widgets.dart';
 
 void main() {
   group('Common Widgets Tests', () {
-    testWidgets('LoadingWidget displays correctly', (WidgetTester tester) async {
+    testWidgets('LoadingWidget displays correctly', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(
-            body: LoadingWidget(message: 'Loading test'),
-          ),
+          home: Scaffold(body: LoadingWidget(message: 'Loading test')),
         ),
       );
 
@@ -39,7 +39,9 @@ void main() {
       expect(retryPressed, true);
     });
 
-    testWidgets('LoadingButton shows loading state', (WidgetTester tester) async {
+    testWidgets('LoadingButton shows loading state', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -56,7 +58,9 @@ void main() {
       expect(find.text('Test Button'), findsOneWidget);
     });
 
-    testWidgets('ValidatedTextField shows validation error', (WidgetTester tester) async {
+    testWidgets('ValidatedTextField shows validation error', (
+      WidgetTester tester,
+    ) async {
       final controller = TextEditingController();
 
       await tester.pumpWidget(
@@ -72,11 +76,16 @@ void main() {
       );
 
       expect(find.text('Test Field'), findsOneWidget);
-      
+
       // Enter invalid text and trigger validation
-      await tester.enterText(find.byType(TextField), '');
+      // The underlying controller starts empty, so enter a non-empty value first
+      // to ensure `onChanged` fires, then clear it to trigger the validator.
+      final field = find.byType(TextField);
+      await tester.enterText(field, 'a');
       await tester.pump();
-      
+      await tester.enterText(field, '');
+      await tester.pump();
+
       // The validation should trigger on text change
       expect(find.text('Required'), findsOneWidget);
     });

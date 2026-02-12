@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'screens/register_student_screen_new.dart';
-import 'screens/scan_attendance_screen.dart';
+import '../screens/register_student_screen_new.dart';
+import '../screens/scan_attendance_screen.dart';
 
 /// Example integration of new face attendance screens
-/// 
+///
 /// This file shows how to integrate the new screens into your existing app.
 /// You can use this as a reference for your dashboard or navigation system.
 
@@ -13,9 +13,7 @@ class FaceAttendanceIntegrationExample extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Attendance System'),
-      ),
+      appBar: AppBar(title: const Text('Attendance System')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -24,22 +22,16 @@ class FaceAttendanceIntegrationExample extends StatelessWidget {
             // Header
             const Text(
               'Face Attendance System',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
               'Powered by AI Face Recognition',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             ),
-            
+
             const SizedBox(height: 32),
-            
+
             // Register Student Card
             _buildFeatureCard(
               context,
@@ -56,9 +48,9 @@ class FaceAttendanceIntegrationExample extends StatelessWidget {
                 );
               },
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // Mark Attendance Card
             _buildFeatureCard(
               context,
@@ -75,9 +67,9 @@ class FaceAttendanceIntegrationExample extends StatelessWidget {
                 );
               },
             ),
-            
+
             const SizedBox(height: 32),
-            
+
             // Info Section
             Container(
               padding: const EdgeInsets.all(16),
@@ -91,7 +83,11 @@ class FaceAttendanceIntegrationExample extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.info_outline, color: Colors.amber, size: 20),
+                      const Icon(
+                        Icons.info_outline,
+                        color: Colors.amber,
+                        size: 20,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         'How it works',
@@ -116,7 +112,7 @@ class FaceAttendanceIntegrationExample extends StatelessWidget {
       ),
     );
   }
-  
+
   Widget _buildFeatureCard(
     BuildContext context, {
     required IconData icon,
@@ -161,10 +157,7 @@ class FaceAttendanceIntegrationExample extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     description,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                   ),
                 ],
               ),
@@ -175,7 +168,7 @@ class FaceAttendanceIntegrationExample extends StatelessWidget {
       ),
     );
   }
-  
+
   Widget _buildInfoRow(String text) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -186,10 +179,7 @@ class FaceAttendanceIntegrationExample extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.amber[900],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.amber[900]),
             ),
           ),
         ],
@@ -199,11 +189,11 @@ class FaceAttendanceIntegrationExample extends StatelessWidget {
 }
 
 /// Alternative: Add to existing Dashboard
-/// 
+///
 /// If you have an existing dashboard screen, you can add these options:
-/// 
+///
 /// Example for GridView dashboard:
-/// 
+///
 /// GridView.count(
 ///   crossAxisCount: 2,
 ///   children: [
@@ -225,9 +215,9 @@ class FaceAttendanceIntegrationExample extends StatelessWidget {
 ///     ),
 ///   ],
 /// )
-/// 
+///
 /// Example for Drawer menu:
-/// 
+///
 /// ListTile(
 ///   leading: const Icon(Icons.person_add),
 ///   title: const Text('Register Student'),

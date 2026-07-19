@@ -10,7 +10,7 @@ class ApiService {
   // For physical device via USB: use localhost with adb reverse
   // For physical device via WiFi: use computer's local IP
   static const String baseUrl =
-      'http://13.51.55.238:8100'; // Network connection
+      'http://153.75.248.123:8100'; // Network connection
   static String? _token;
 
   static String? uploadsUrl(String? relativePath) {

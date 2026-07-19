@@ -590,13 +590,7 @@ class _UserCard extends StatelessWidget {
                       user['email'] ?? 'No Email',
                       style: TextStyle(color: Colors.grey[600], fontSize: 13),
                     ),
-                    if ((user['organization_name'] ??
-                            user['organization_id']) !=
-                        null)
-                      Text(
-                        'Org: ${user['organization_name'] ?? user['organization_id']}',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      ),
+
                     const SizedBox(height: 6),
                     Row(
                       children: [

@@ -1,0 +1,49 @@
+name: Deploy FaceMark Backend to VPS
+
+on:
+  push:
+    branches:
+      - main  # Trigger deploy when pushing to main branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            echo "🚀 Deploying updates to VPS..."
+            
+            # Navigate to application folder on VPS
+            cd /var/www/face_mark
+            
+            # Fetch and reset code to match GitHub main branch
+            git fetch --all
+            git reset --hard origin/main
+            
+            # Activate python virtual environment and update dependencies
+            if [ -d "venv" ]; then
+              source venv/bin/activate
+            else
+              python3 -m venv venv
+              source venv/bin/activate
+            fi
+            
+            # Install python requirements
+            pip install --upgrade pip
+            pip install -r attendance_backend/requirements.txt
+            
+            # Restart backend systemd daemon to apply changes
+            echo "🔄 Restarting FaceMark service..."
+            sudo systemctl restart facemark.service
+            
+            echo "✅ Deployment completed successfully!"

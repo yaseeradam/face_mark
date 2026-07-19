@@ -1,66 +1,45 @@
 """Database CRUD operations"""
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func, Date
+from sqlalchemy import and_, func
 from datetime import datetime, date
+import os
 from . import models
 from ..core.security import get_password_hash, verify_password
 
-# Organization CRUD
-def create_organization(db: Session, org_data: dict) -> models.Organization:
-    db_org = models.Organization(
-        name=org_data["name"],
-        code=org_data["code"],
-        status=org_data.get("status", "active")
-    )
-    db.add(db_org)
-    db.commit()
-    db.refresh(db_org)
-    return db_org
-
-def get_organization_by_id(db: Session, org_id: int) -> Optional[models.Organization]:
-    return db.query(models.Organization).filter(models.Organization.id == org_id).first()
-
-def get_organization_by_code(db: Session, code: str) -> Optional[models.Organization]:
-    return db.query(models.Organization).filter(models.Organization.code == code).first()
-
-def get_organizations(db: Session) -> List[models.Organization]:
-    return db.query(models.Organization).all()
-
-def update_organization(db: Session, org_id: int, update_data: dict) -> Optional[models.Organization]:
-    org = get_organization_by_id(db, org_id)
-    if org:
-        for key, value in update_data.items():
-            if hasattr(org, key):
-                setattr(org, key, value)
-        db.commit()
-        db.refresh(org)
-    return org
-
-def delete_organization(db: Session, org_id: int) -> bool:
-    org = get_organization_by_id(db, org_id)
-    if org:
-        db.delete(org)
-        db.commit()
-        return True
-    return False
+def _delete_student_photo_file(photo_path: Optional[str]) -> None:
+    if not photo_path:
+        return
+    try:
+        # Resolve absolute path to the uploads folder
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        normalized_path = photo_path.replace("\\", "/").lstrip("/")
+        abs_path = os.path.join(base_dir, "uploads", normalized_path)
+        if os.path.exists(abs_path) and os.path.isfile(abs_path):
+            os.remove(abs_path)
+            print(f"Deleted photo file: {abs_path}")
+    except Exception as e:
+        print(f"Error deleting photo file {photo_path}: {e}")
 
 # Teacher CRUD
 def create_teacher(db: Session, teacher_data: dict) -> models.Teacher:
-    hashed_password = get_password_hash(teacher_data["password"])
-    db_teacher = models.Teacher(
-        teacher_id=teacher_data["teacher_id"],
-        full_name=teacher_data["full_name"],
-        email=teacher_data["email"],
-        password_hash=hashed_password,
-        role=teacher_data.get("role", "teacher"),
-        status=teacher_data.get("status", "active"),
-        organization_id=teacher_data.get("organization_id")
-    )
-    db.add(db_teacher)
-    db.commit()
-    db.refresh(db_teacher)
-    return db_teacher
+    try:
+        hashed_password = get_password_hash(teacher_data["password"])
+        db_teacher = models.Teacher(
+            teacher_id=teacher_data["teacher_id"],
+            full_name=teacher_data["full_name"],
+            email=teacher_data["email"],
+            password_hash=hashed_password,
+            role=teacher_data.get("role", "teacher"),
+            status=teacher_data.get("status", "active")
+        )
+        db.add(db_teacher)
+        db.commit()
+        db.refresh(db_teacher)
+        return db_teacher
+    except Exception:
+        db.rollback()
+        raise
 
 def get_teacher_by_email(db: Session, email: str) -> Optional[models.Teacher]:
     return db.query(models.Teacher).filter(models.Teacher.email == email).first()
@@ -71,11 +50,8 @@ def get_teacher_by_teacher_id(db: Session, teacher_id: str) -> Optional[models.T
 def get_teacher_by_id(db: Session, teacher_id: int) -> Optional[models.Teacher]:
     return db.query(models.Teacher).filter(models.Teacher.id == teacher_id).first()
 
-def get_teachers(db: Session, skip: int = 0, limit: int = 100, org_id: Optional[int] = None) -> List[models.Teacher]:
-    query = db.query(models.Teacher)
-    if org_id is not None:
-        query = query.filter(models.Teacher.organization_id == org_id)
-    return query.offset(skip).limit(limit).all()
+def get_teachers(db: Session, skip: int = 0, limit: int = 100) -> List[models.Teacher]:
+    return db.query(models.Teacher).offset(skip).limit(limit).all()
 
 def authenticate_teacher(db: Session, email: str, password: str) -> Optional[models.Teacher]:
     teacher = get_teacher_by_email(db, email)
@@ -85,30 +61,38 @@ def authenticate_teacher(db: Session, email: str, password: str) -> Optional[mod
 
 # Class CRUD
 def create_class(db: Session, class_data: dict) -> models.Class:
-    db_class = models.Class(**class_data)
-    db.add(db_class)
-    db.commit()
-    db.refresh(db_class)
-    return db_class
+    try:
+        # Strip organization_id if passed in payload
+        class_data.pop("organization_id", None)
+        db_class = models.Class(**class_data)
+        db.add(db_class)
+        db.commit()
+        db.refresh(db_class)
+        return db_class
+    except Exception:
+        db.rollback()
+        raise
 
 def get_class_by_id(db: Session, class_id: int) -> Optional[models.Class]:
     return db.query(models.Class).filter(models.Class.id == class_id).first()
 
-def get_classes(db: Session, teacher_id: Optional[int] = None, org_id: Optional[int] = None) -> List[models.Class]:
+def get_classes(db: Session, teacher_id: Optional[int] = None) -> List[models.Class]:
     query = db.query(models.Class)
     if teacher_id is not None:
         query = query.filter(models.Class.teacher_id == teacher_id)
-    if org_id is not None:
-        query = query.filter(models.Class.organization_id == org_id)
     return query.all()
 
 # Student CRUD
 def create_student(db: Session, student_data: dict) -> models.Student:
-    db_student = models.Student(**student_data)
-    db.add(db_student)
-    db.commit()
-    db.refresh(db_student)
-    return db_student
+    try:
+        db_student = models.Student(**student_data)
+        db.add(db_student)
+        db.commit()
+        db.refresh(db_student)
+        return db_student
+    except Exception:
+        db.rollback()
+        raise
 
 def get_student_by_id(db: Session, student_id: int) -> Optional[models.Student]:
     return db.query(models.Student).filter(models.Student.id == student_id).first()
@@ -125,95 +109,137 @@ def get_students(db: Session, class_id: Optional[int] = None, class_ids: Optiona
     return query.all()
 
 def update_student_face_enrolled(db: Session, student_id: int, enrolled: bool, photo_path: str = None) -> models.Student:
-    student = get_student_by_id(db, student_id)
-    if student:
-        student.face_enrolled = enrolled
-        if photo_path:
-            student.photo_path = photo_path
-        db.commit()
-        db.refresh(student)
-    return student
+    try:
+        student = get_student_by_id(db, student_id)
+        if student:
+            student.face_enrolled = enrolled
+            if photo_path:
+                # If there's an existing photo, delete it to prevent orphaned files
+                if student.photo_path and student.photo_path != photo_path:
+                    _delete_student_photo_file(student.photo_path)
+                student.photo_path = photo_path
+            db.commit()
+            db.refresh(student)
+        return student
+    except Exception:
+        db.rollback()
+        raise
 
 def update_student(db: Session, student_id: int, update_data: dict) -> models.Student:
-    student = get_student_by_id(db, student_id)
-    if student:
-        for key, value in update_data.items():
-            if hasattr(student, key):
-                setattr(student, key, value)
-        db.commit()
-        db.refresh(student)
-    return student
+    try:
+        student = get_student_by_id(db, student_id)
+        if student:
+            for key, value in update_data.items():
+                if hasattr(student, key):
+                    setattr(student, key, value)
+            db.commit()
+            db.refresh(student)
+        return student
+    except Exception:
+        db.rollback()
+        raise
 
 def delete_student(db: Session, student_id: int) -> bool:
-    student = get_student_by_id(db, student_id)
-    if student:
-        # Delete face embedding first
-        db.query(models.FaceEmbedding).filter(models.FaceEmbedding.student_id == student_id).delete()
-        # Delete attendance records
-        db.query(models.Attendance).filter(models.Attendance.student_id == student_id).delete()
-        # Delete student
-        db.delete(student)
-        db.commit()
-        return True
-    return False
+    try:
+        student = get_student_by_id(db, student_id)
+        if student:
+            # Delete face embedding first
+            db.query(models.FaceEmbedding).filter(models.FaceEmbedding.student_id == student_id).delete()
+            # Delete attendance records
+            db.query(models.Attendance).filter(models.Attendance.student_id == student_id).delete()
+            # Clean up the physical profile photo file from disk
+            _delete_student_photo_file(student.photo_path)
+            # Delete student
+            db.delete(student)
+            db.commit()
+            return True
+        return False
+    except Exception:
+        db.rollback()
+        raise
 
 # Teacher UPDATE/DELETE
 def update_teacher(db: Session, teacher_id: int, update_data: dict) -> models.Teacher:
-    teacher = get_teacher_by_id(db, teacher_id)
-    if teacher:
-        for key, value in update_data.items():
-            if key == "password":
-                teacher.password_hash = get_password_hash(value)
-            elif hasattr(teacher, key):
-                setattr(teacher, key, value)
-        db.commit()
-        db.refresh(teacher)
-    return teacher
+    try:
+        teacher = get_teacher_by_id(db, teacher_id)
+        if teacher:
+            for key, value in update_data.items():
+                if key == "password":
+                    teacher.password_hash = get_password_hash(value)
+                elif hasattr(teacher, key):
+                    setattr(teacher, key, value)
+            db.commit()
+            db.refresh(teacher)
+        return teacher
+    except Exception:
+        db.rollback()
+        raise
 
 def delete_teacher(db: Session, teacher_id: int) -> bool:
-    teacher = get_teacher_by_id(db, teacher_id)
-    if teacher:
-        db.delete(teacher)
-        db.commit()
-        return True
-    return False
+    try:
+        teacher = get_teacher_by_id(db, teacher_id)
+        if teacher:
+            # Delete teacher face embeddings first
+            db.query(models.TeacherFaceEmbedding).filter(models.TeacherFaceEmbedding.teacher_id == teacher_id).delete()
+            # Delete teacher
+            db.delete(teacher)
+            db.commit()
+            return True
+        return False
+    except Exception:
+        db.rollback()
+        raise
 
 # Class UPDATE/DELETE
 def update_class(db: Session, class_id: int, update_data: dict) -> models.Class:
-    class_obj = get_class_by_id(db, class_id)
-    if class_obj:
-        for key, value in update_data.items():
-            if hasattr(class_obj, key):
-                setattr(class_obj, key, value)
-        db.commit()
-        db.refresh(class_obj)
-    return class_obj
+    try:
+        class_obj = get_class_by_id(db, class_id)
+        if class_obj:
+            # Strip organization_id if passed
+            update_data.pop("organization_id", None)
+            for key, value in update_data.items():
+                if hasattr(class_obj, key):
+                    setattr(class_obj, key, value)
+            db.commit()
+            db.refresh(class_obj)
+        return class_obj
+    except Exception:
+        db.rollback()
+        raise
 
 def delete_class(db: Session, class_id: int) -> bool:
-    class_obj = get_class_by_id(db, class_id)
-    if class_obj:
-        # Delete students in this class (cascade)
-        students = get_students(db, class_id=class_id)
-        for student in students:
-            delete_student(db, student.id)
-        db.delete(class_obj)
-        db.commit()
-        return True
-    return False
+    try:
+        class_obj = get_class_by_id(db, class_id)
+        if class_obj:
+            # Delete students in this class (cascade)
+            students = get_students(db, class_id=class_id)
+            for student in students:
+                delete_student(db, student.id)
+            db.delete(class_obj)
+            db.commit()
+            return True
+        return False
+    except Exception:
+        db.rollback()
+        raise
 
 # Face Embedding CRUD
 def create_face_embedding(db: Session, student_id: int, embedding: str) -> models.FaceEmbedding:
-    # Delete existing embedding if any
-    db.query(models.FaceEmbedding).filter(models.FaceEmbedding.student_id == student_id).delete()
-    
-    db_embedding = models.FaceEmbedding(
-        student_id=student_id,
-        embedding=embedding
-    )
-    db.add(db_embedding)
-    db.commit()
-    db.refresh(db_embedding)
-    return db_embedding
+    try:
+        # Delete existing embedding if any
+        db.query(models.FaceEmbedding).filter(models.FaceEmbedding.student_id == student_id).delete()
+        
+        db_embedding = models.FaceEmbedding(
+            student_id=student_id,
+            embedding=embedding
+        )
+        db.add(db_embedding)
+        db.commit()
+        db.refresh(db_embedding)
+        return db_embedding
+    except Exception:
+        db.rollback()
+        raise
 
 def get_face_embedding(db: Session, student_id: int) -> Optional[models.FaceEmbedding]:
     return db.query(models.FaceEmbedding).filter(models.FaceEmbedding.student_id == student_id).first()
@@ -231,7 +257,6 @@ def get_all_face_embeddings_by_class_ids(db: Session, class_ids: List[int]) -> L
 def get_all_face_embeddings(db: Session) -> List[models.FaceEmbedding]:
     return db.query(models.FaceEmbedding).all()
 
-
 # Attendance CRUD
 def create_attendance(
     db: Session,
@@ -241,17 +266,21 @@ def create_attendance(
     status: str = "present",
     check_in_type: str = "morning"
 ) -> models.Attendance:
-    db_attendance = models.Attendance(
-        student_id=student_id,
-        class_id=class_id,
-        confidence_score=confidence_score,
-        status=status,
-        check_in_type=check_in_type
-    )
-    db.add(db_attendance)
-    db.commit()
-    db.refresh(db_attendance)
-    return db_attendance
+    try:
+        db_attendance = models.Attendance(
+            student_id=student_id,
+            class_id=class_id,
+            confidence_score=confidence_score,
+            status=status,
+            check_in_type=check_in_type
+        )
+        db.add(db_attendance)
+        db.commit()
+        db.refresh(db_attendance)
+        return db_attendance
+    except Exception:
+        db.rollback()
+        raise
 
 def get_attendance_today(db: Session, class_id: Optional[int] = None, class_ids: Optional[List[int]] = None) -> List[models.Attendance]:
     today = date.today()
@@ -309,37 +338,48 @@ def get_attendance_record_for_date(
     return query.first()
 
 def update_attendance(db: Session, attendance_id: int, update_data: dict) -> Optional[models.Attendance]:
-    attendance = db.query(models.Attendance).filter(models.Attendance.id == attendance_id).first()
-    if attendance:
-        for key, value in update_data.items():
-            if hasattr(attendance, key):
-                setattr(attendance, key, value)
-        db.commit()
-        db.refresh(attendance)
-    return attendance
+    try:
+        attendance = db.query(models.Attendance).filter(models.Attendance.id == attendance_id).first()
+        if attendance:
+            for key, value in update_data.items():
+                if hasattr(attendance, key):
+                    setattr(attendance, key, value)
+            db.commit()
+            db.refresh(attendance)
+        return attendance
+    except Exception:
+        db.rollback()
+        raise
 
-# Attendance Settings CRUD
-def get_attendance_settings_by_org_id(db: Session, org_id: int) -> Optional[models.AttendanceSettings]:
-    return db.query(models.AttendanceSettings).filter(models.AttendanceSettings.organization_id == org_id).first()
+# Global Attendance Settings CRUD
+def get_attendance_settings(db: Session) -> models.AttendanceSettings:
+    try:
+        settings = db.query(models.AttendanceSettings).first()
+        if not settings:
+            # Create a default settings row
+            settings = models.AttendanceSettings()
+            db.add(settings)
+            db.commit()
+            db.refresh(settings)
+        return settings
+    except Exception:
+        db.rollback()
+        raise
 
-def upsert_attendance_settings(db: Session, org_id: int, update_data: dict) -> models.AttendanceSettings:
-    settings = get_attendance_settings_by_org_id(db, org_id)
-    if settings:
+def upsert_attendance_settings(db: Session, update_data: dict) -> models.AttendanceSettings:
+    try:
+        settings = get_attendance_settings(db)
+        # Strip organization_id if present
+        update_data.pop("organization_id", None)
         for key, value in update_data.items():
             if hasattr(settings, key):
                 setattr(settings, key, value)
         db.commit()
         db.refresh(settings)
         return settings
-
-    settings = models.AttendanceSettings(
-        organization_id=org_id,
-        **update_data
-    )
-    db.add(settings)
-    db.commit()
-    db.refresh(settings)
-    return settings
+    except Exception:
+        db.rollback()
+        raise
 
 def get_attendance_by_date(db: Session, filter_date: date, class_id: Optional[int] = None, class_ids: Optional[List[int]] = None) -> List[models.Attendance]:
     """Get attendance records for a specific date"""
@@ -366,8 +406,6 @@ def get_attendance_by_student(db: Session, student_id: int, start_date: date = N
     """Get attendance records for a specific student"""
     query = db.query(models.Attendance).filter(models.Attendance.student_id == student_id)
     
-    from datetime import datetime
-    
     if start_date:
         start_ts = datetime.combine(start_date, datetime.min.time())
         query = query.filter(models.Attendance.marked_at >= start_ts)
@@ -379,17 +417,20 @@ def get_attendance_by_student(db: Session, student_id: int, start_date: date = N
     return query.all()
 
 # Teacher Face Embedding CRUD
-
 def create_teacher_face_embedding(db: Session, teacher_id: int, embedding: str) -> models.TeacherFaceEmbedding:
-    db.query(models.TeacherFaceEmbedding).filter(models.TeacherFaceEmbedding.teacher_id == teacher_id).delete()
-    db_embedding = models.TeacherFaceEmbedding(
-        teacher_id=teacher_id,
-        embedding=embedding
-    )
-    db.add(db_embedding)
-    db.commit()
-    db.refresh(db_embedding)
-    return db_embedding
+    try:
+        db.query(models.TeacherFaceEmbedding).filter(models.TeacherFaceEmbedding.teacher_id == teacher_id).delete()
+        db_embedding = models.TeacherFaceEmbedding(
+            teacher_id=teacher_id,
+            embedding=embedding
+        )
+        db.add(db_embedding)
+        db.commit()
+        db.refresh(db_embedding)
+        return db_embedding
+    except Exception:
+        db.rollback()
+        raise
 
 def get_teacher_face_embedding(db: Session, teacher_id: int) -> Optional[models.TeacherFaceEmbedding]:
     return db.query(models.TeacherFaceEmbedding).filter(models.TeacherFaceEmbedding.teacher_id == teacher_id).first()

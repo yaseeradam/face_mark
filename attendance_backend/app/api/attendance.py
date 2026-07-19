@@ -7,22 +7,46 @@ from ..core.security import require_teacher
 from ..db.base import get_db
 from ..services.attendance_service import AttendanceService
 from ..services.class_service import ClassService
-from ..schemas.attendance import AttendanceResponse, AttendanceWithDetails, AttendanceSummary
+from pydantic import BaseModel
+from ..schemas.attendance import AttendanceMarkRequest, AttendanceResponse, AttendanceWithDetails, AttendanceSummary
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 attendance_service = AttendanceService()
 class_service = ClassService()
 
+class AutoAbsentRequest(BaseModel):
+    class_ids: List[int]
+
+@router.post("/auto-absent")
+async def trigger_auto_absent(
+    payload: AutoAbsentRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_teacher)
+):
+    """Manually trigger auto-absent logic for specified class(es)"""
+    for class_id in payload.class_ids:
+        has_access = await class_service.check_teacher_access(class_id, current_user["user_id"], db)
+        if not has_access:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied to class {class_id}"
+            )
+    
+    await attendance_service.auto_mark_absent_for_classes(db, payload.class_ids)
+    return {"success": True, "message": f"Auto-absent triggered for {len(payload.class_ids)} class(es)."}
+
 @router.post("/mark", response_model=AttendanceResponse)
 async def mark_attendance(
-    student_id: int,
-    class_id: int,
-    confidence_score: float,
-    check_in_type: str = "morning",
+    payload: AttendanceMarkRequest,
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_teacher)
 ):
     """Mark attendance for a student (Internal use - called by face verification)"""
+    class_id = payload.class_id
+    student_id = payload.student_id
+    confidence_score = payload.confidence_score
+    check_in_type = payload.check_in_type
+
     # Check if teacher has access to this class
     has_access = await class_service.check_teacher_access(class_id, current_user["user_id"], db)
     if not has_access:
@@ -36,8 +60,6 @@ async def mark_attendance(
             db,
             check_in_type=check_in_type,
         )
-        # Return a plain dict to avoid Pydantic trying to coerce ORM relationships
-        # (e.g. `attendance.student`) into `dict` fields on the response schema.
         return {
             "id": attendance.id,
             "student_id": attendance.student_id,

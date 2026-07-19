@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from app.api.attendance import mark_attendance
 from app.db import models
 from app.db.base import Base
+from app.schemas.attendance import AttendanceMarkRequest
 
 
 def _make_db():
@@ -26,7 +27,6 @@ def _seed_teacher_class_student(db):
         password_hash="x",
         role="super_admin",
         status="active",
-        organization_id=None,
     )
     db.add(teacher)
     db.commit()
@@ -36,7 +36,6 @@ def _seed_teacher_class_student(db):
         class_name="Test Class",
         class_code="TST001",
         teacher_id=teacher.id,
-        organization_id=None,
     )
     db.add(class_obj)
     db.commit()
@@ -60,12 +59,16 @@ def test_mark_attendance_returns_jsonable_dict():
     try:
         teacher, class_obj, student = _seed_teacher_class_student(db)
 
+        payload = AttendanceMarkRequest(
+            student_id=student.id,
+            class_id=class_obj.id,
+            confidence_score=0.95,
+            check_in_type="morning",
+        )
+
         result = asyncio.run(
             mark_attendance(
-                student_id=student.id,
-                class_id=class_obj.id,
-                confidence_score=0.95,
-                check_in_type="morning",
+                payload=payload,
                 db=db,
                 current_user={"user_id": teacher.id, "role": teacher.role},
             )
@@ -88,12 +91,16 @@ def test_mark_attendance_duplicate_returns_400():
     try:
         teacher, class_obj, student = _seed_teacher_class_student(db)
 
+        payload = AttendanceMarkRequest(
+            student_id=student.id,
+            class_id=class_obj.id,
+            confidence_score=0.95,
+            check_in_type="morning",
+        )
+
         asyncio.run(
             mark_attendance(
-                student_id=student.id,
-                class_id=class_obj.id,
-                confidence_score=0.95,
-                check_in_type="morning",
+                payload=payload,
                 db=db,
                 current_user={"user_id": teacher.id, "role": teacher.role},
             )
@@ -102,10 +109,7 @@ def test_mark_attendance_duplicate_returns_400():
         with pytest.raises(HTTPException) as exc_info:
             asyncio.run(
                 mark_attendance(
-                    student_id=student.id,
-                    class_id=class_obj.id,
-                    confidence_score=0.95,
-                    check_in_type="morning",
+                    payload=payload,
                     db=db,
                     current_user={"user_id": teacher.id, "role": teacher.role},
                 )

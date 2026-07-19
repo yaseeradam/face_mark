@@ -46,3 +46,6 @@ app.*.map.json
 
 # Exclude admin_web
 admin_web/
+
+# SQLite database file
+attendance_backend/attendance.db

@@ -20,9 +20,7 @@ class AttendanceService:
             return fallback
 
     def _get_settings_for_class(self, class_id: int, db: Session) -> dict:
-        class_obj = crud.get_class_by_id(db, class_id)
-        org_id = class_obj.organization_id if class_obj else None
-        settings = crud.get_attendance_settings_by_org_id(db, org_id) if org_id else None
+        settings = crud.get_attendance_settings(db)
 
         return {
             "school_start_time": self._parse_time(
@@ -53,8 +51,10 @@ class AttendanceService:
             return "late"
         return "absent"
 
-    async def _auto_mark_absent_for_classes(self, db: Session, class_ids: List[int]) -> None:
+    async def auto_mark_absent_for_classes(self, db: Session, class_ids: List[int]) -> None:
+        """Auto-mark absent students for classes in a single database transaction"""
         now = datetime.now()
+        records_to_add = []
         for class_id in class_ids:
             settings = self._get_settings_for_class(class_id, db)
             if now.time() < settings["auto_absent_time"]:
@@ -71,14 +71,24 @@ class AttendanceService:
                 if existing:
                     continue
 
-                crud.create_attendance(
-                    db,
-                    student.id,
-                    class_id,
+                db_attendance = models.Attendance(
+                    student_id=student.id,
+                    class_id=class_id,
                     confidence_score=None,
                     status="absent",
                     check_in_type="morning"
                 )
+                records_to_add.append(db_attendance)
+        
+        if records_to_add:
+            try:
+                db.add_all(records_to_add)
+                db.commit()
+                print(f"Auto-marked {len(records_to_add)} student(s) as absent.")
+            except Exception as e:
+                db.rollback()
+                print(f"Error auto-marking absents: {e}")
+                raise
     
     async def mark_attendance(
         self,
@@ -140,16 +150,10 @@ class AttendanceService:
     
     async def get_attendance_today(self, db: Session, class_id: Optional[int] = None, class_ids: Optional[List[int]] = None) -> List[models.Attendance]:
         """Get today's attendance records"""
-        if class_id:
-            await self._auto_mark_absent_for_classes(db, [class_id])
-        elif class_ids:
-            await self._auto_mark_absent_for_classes(db, class_ids)
         return crud.get_attendance_today(db, class_id=class_id, class_ids=class_ids)
     
     async def get_attendance_by_class(self, class_id: int, db: Session, date_filter: Optional[date] = None) -> List[models.Attendance]:
         """Get attendance records for a specific class"""
-        if not date_filter or date_filter == date.today():
-            await self._auto_mark_absent_for_classes(db, [class_id])
         return crud.get_attendance_by_class(db, class_id, date_filter=date_filter)
     
     async def get_attendance_summary(self, class_id: int, db: Session, date_filter: Optional[date] = None) -> dict:
@@ -176,9 +180,4 @@ class AttendanceService:
     
     async def get_attendance_by_date(self, db: Session, filter_date: date, class_id: Optional[int] = None, class_ids: Optional[List[int]] = None) -> List[models.Attendance]:
         """Get attendance records for a specific date"""
-        if filter_date == date.today():
-            if class_id:
-                await self._auto_mark_absent_for_classes(db, [class_id])
-            elif class_ids:
-                await self._auto_mark_absent_for_classes(db, class_ids)
         return crud.get_attendance_by_date(db, filter_date, class_id=class_id, class_ids=class_ids)

@@ -14,7 +14,6 @@ import '../screens/class_management_screen.dart';
 import '../screens/teacher_management_screen.dart';
 import '../screens/attendance_report_screen.dart';
 import '../screens/admin/admin_user_management_screen.dart';
-import '../screens/admin/admin_organization_management_screen.dart';
 import '../screens/forgot_password_screen.dart';
 
 class AppRoutes {
@@ -33,7 +32,6 @@ class AppRoutes {
   static const String teacherManagement = '/teacher-management';
   static const String attendanceReport = '/attendance-report';
   static const String adminUserManagement = '/admin-user-management';
-  static const String adminOrgManagement = '/admin-org-management';
   static const String scanAttendance = '/scan-attendance';
   static const String forgotPassword = '/forgot-password';
 
@@ -53,7 +51,6 @@ class AppRoutes {
     teacherManagement: (context) => const TeacherManagementScreen(),
     attendanceReport: (context) => const AttendanceReportScreen(),
     adminUserManagement: (context) => const AdminUserManagementScreen(),
-    adminOrgManagement: (context) => const AdminOrganizationManagementScreen(),
     scanAttendance: (context) => const MarkAttendanceScreen1(),
     forgotPassword: (context) => const ForgotPasswordScreen(),
   };

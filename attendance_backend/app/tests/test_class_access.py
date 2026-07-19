@@ -25,7 +25,6 @@ def test_super_admin_can_access_class_without_org():
             password_hash="x",
             role="super_admin",
             status="active",
-            organization_id=None,
         )
         db.add(super_admin)
         db.commit()
@@ -35,7 +34,6 @@ def test_super_admin_can_access_class_without_org():
             class_name="Test Class",
             class_code="TST001",
             teacher_id=super_admin.id,
-            organization_id=None,
         )
         db.add(class_obj)
         db.commit()

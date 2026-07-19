@@ -324,12 +324,7 @@ class _AdminProfileSetupScreenState
                   null,
                   Icons.person,
                 ),
-                _buildListItem(
-                  context,
-                  "Organization Details",
-                  null,
-                  Icons.domain,
-                ),
+
 
                 // Notifications Switch
                 Container(

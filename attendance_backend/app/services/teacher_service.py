@@ -18,9 +18,9 @@ class TeacherService:
         teacher_dict = teacher_data.model_dump()
         return crud.create_teacher(db, teacher_dict)
     
-    async def get_teachers(self, db: Session, org_id: Optional[int] = None) -> List[models.Teacher]:
-        """Get all teachers, optionally filtered by organization"""
-        return crud.get_teachers(db, org_id=org_id)
+    async def get_teachers(self, db: Session) -> List[models.Teacher]:
+        """Get all teachers"""
+        return crud.get_teachers(db)
     
     async def authenticate_teacher(self, identifier: str, password: str, db: Session) -> Optional[models.Teacher]:
         """Authenticate teacher login by email or teacher_id"""

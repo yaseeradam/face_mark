@@ -407,28 +407,6 @@ class ApiService {
     }
   }
 
-  // Organization management endpoints (Super Admin)
-  static Future<Map<String, dynamic>> getOrganizations() async {
-    return await _makeRequest('GET', '/organizations/');
-  }
-
-  static Future<Map<String, dynamic>> createOrganization(
-    Map<String, dynamic> orgData,
-  ) async {
-    return await _makeRequest('POST', '/organizations/', body: orgData);
-  }
-
-  static Future<Map<String, dynamic>> updateOrganization(
-    String orgId,
-    Map<String, dynamic> orgData,
-  ) async {
-    return await _makeRequest('PUT', '/organizations/$orgId', body: orgData);
-  }
-
-  static Future<Map<String, dynamic>> deleteOrganization(String orgId) async {
-    return await _makeRequest('DELETE', '/organizations/$orgId');
-  }
-
   // Teacher endpoints
   static Future<Map<String, dynamic>> getTeachers() async {
     return await _makeRequest('GET', '/teachers/');
@@ -563,18 +541,33 @@ class ApiService {
     String checkInType = 'morning',
     required File imageFile,
   }) async {
-    final fields = {'auto_mark': autoMark.toString()};
-    fields['check_in_type'] = checkInType;
-    if (classId != null) {
-      fields['class_id'] = classId.toString();
+    File? compressed;
+    try {
+      compressed = await ImageCompressor.compressForUpload(imageFile);
+    } catch (_) {
+      compressed = null;
     }
 
-    return await _makeRequest(
-      'POST',
-      '/face/verify',
-      file: imageFile,
-      fields: fields,
-    );
+    try {
+      final fields = {'auto_mark': autoMark.toString()};
+      fields['check_in_type'] = checkInType;
+      if (classId != null) {
+        fields['class_id'] = classId.toString();
+      }
+
+      return await _makeRequest(
+        'POST',
+        '/face/verify',
+        file: compressed ?? imageFile,
+        fields: fields,
+      );
+    } finally {
+      if (compressed != null && compressed.path != imageFile.path) {
+        try {
+          await compressed.delete();
+        } catch (_) {}
+      }
+    }
   }
 
   // Face recognition endpoints
@@ -610,16 +603,27 @@ class ApiService {
   }
 
   // Attendance endpoints
+  static Future<Map<String, dynamic>> triggerAutoAbsent(List<int> classIds) async {
+    return await _makeRequest(
+      'POST',
+      '/attendance/auto-absent',
+      body: {'class_ids': classIds},
+    );
+  }
+
   static Future<Map<String, dynamic>> markAttendance(
     Map<String, dynamic> attendanceData,
   ) async {
-    final studentId = attendanceData['student_id'];
-    final classId = attendanceData['class_id'];
-    final confidenceScore = attendanceData['confidence_score'] ?? 0.0;
-    final checkInType = attendanceData['check_in_type'] ?? 'morning';
-    final endpoint =
-        '/attendance/mark?student_id=$studentId&class_id=$classId&confidence_score=$confidenceScore&check_in_type=$checkInType';
-    return await _makeRequest('POST', endpoint);
+    return await _makeRequest(
+      'POST',
+      '/attendance/mark',
+      body: {
+        'student_id': attendanceData['student_id'],
+        'class_id': attendanceData['class_id'],
+        'confidence_score': attendanceData['confidence_score'] ?? 0.0,
+        'check_in_type': attendanceData['check_in_type'] ?? 'morning',
+      },
+    );
   }
 
   static Future<Map<String, dynamic>> getTodayAttendance({int? classId}) async {

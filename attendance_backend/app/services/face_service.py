@@ -192,38 +192,14 @@ class FaceService:
             print(f"✅ Embedding generated successfully (length: {len(embedding_json)} chars)")
             target_embedding = embedding_from_json(embedding_json)
             
-            # Get face embeddings
-            if class_id:
-                print(f"[Face] Fetching enrolled faces for class {class_id}...")
-                face_embeddings = crud.get_all_face_embeddings_by_class(db, class_id)
-            elif class_ids:
-                print(f"[Face] Fetching enrolled faces for {len(class_ids)} class(es)...")
-                face_embeddings = crud.get_all_face_embeddings_by_class_ids(db, class_ids)
-            else:
-                print("[Face] Fetching ALL enrolled faces...")
-                face_embeddings = crud.get_all_face_embeddings(db)
+            # Get face embeddings (using cache)
+            candidates = self._get_candidates_cached(db, class_id=class_id, class_ids=class_ids)
 
-            if not face_embeddings:
+            if not candidates:
                 print(f"⚠️ No enrolled faces found")
                 return False, "No enrolled faces found", None, None, threshold
             
-            print(f"✅ Found {len(face_embeddings)} enrolled face(s)")
-            
-            # Prepare candidate embeddings
-            candidates = []
-            for face_embed in face_embeddings:
-                cache_key = face_embed.student_id
-                cached = self._embedding_vector_cache.get(cache_key)
-                updated_at = getattr(face_embed, "updated_at", None)
-                if cached and cached.get("updated_at") == updated_at:
-                    candidate_embedding = cached["vector"]
-                else:
-                    candidate_embedding = embedding_from_json(face_embed.embedding)
-                    self._embedding_vector_cache[cache_key] = {
-                        "updated_at": updated_at,
-                        "vector": candidate_embedding,
-                    }
-                candidates.append((face_embed.student_id, candidate_embedding))
+            print(f"✅ Found {len(candidates)} enrolled face(s) (using cache)")
             
             # Find best match
             print("\n🎯 Starting face matching...")

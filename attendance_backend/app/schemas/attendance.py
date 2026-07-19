@@ -1,7 +1,12 @@
-"""Attendance request/response schemas"""
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+
+class AttendanceMarkRequest(BaseModel):
+    student_id: int
+    class_id: int
+    confidence_score: float
+    check_in_type: str = "morning"
 
 class AttendanceResponse(BaseModel):
     id: int

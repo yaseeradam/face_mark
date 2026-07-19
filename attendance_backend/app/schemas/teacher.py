@@ -10,7 +10,6 @@ class TeacherCreate(BaseModel):
     password: str
     role: Optional[str] = "teacher"
     status: Optional[str] = "active"
-    organization_id: Optional[int] = None
 
 class TeacherUpdate(BaseModel):
     user_id: Optional[str] = None
@@ -19,7 +18,6 @@ class TeacherUpdate(BaseModel):
     password: Optional[str] = None
     role: Optional[str] = None
     status: Optional[str] = None
-    organization_id: Optional[int] = None
 
 class TeacherResponse(BaseModel):
     id: int
@@ -28,8 +26,6 @@ class TeacherResponse(BaseModel):
     email: str
     role: str
     status: Optional[str] = "active"
-    organization_id: Optional[int] = None
-    organization_name: Optional[str] = None
     has_face_id: Optional[bool] = None
     created_at: datetime
     

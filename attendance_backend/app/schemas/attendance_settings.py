@@ -11,7 +11,7 @@ class AttendanceSettingsBase(BaseModel):
     multiple_checkins: bool
 
 class AttendanceSettingsResponse(AttendanceSettingsBase):
-    organization_id: int
+    pass
 
 class AttendanceSettingsUpdate(BaseModel):
     school_start_time: Optional[str] = None

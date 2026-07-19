@@ -1,6 +1,7 @@
 """Teacher Face ID business logic using embeddings"""
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 from sqlalchemy.orm import Session
+import time
 from ..ai.embedding import generate_embedding, embedding_from_json
 from ..ai.matcher import find_best_match
 from ..db import crud
@@ -8,7 +9,26 @@ from ..utils.image_utils import preprocess_image, validate_image_format, resize_
 
 class TeacherFaceService:
     def __init__(self):
-        pass
+        self._candidate_cache = None
+        self._candidate_cache_ttl_seconds = 120
+        self._last_loaded_at = 0
+
+    def _invalidate_cache(self) -> None:
+        self._candidate_cache = None
+
+    def _get_candidates_cached(self, db: Session) -> List[Tuple[int, any]]:
+        now = time.time()
+        if self._candidate_cache is not None and (now - self._last_loaded_at) < self._candidate_cache_ttl_seconds:
+            return self._candidate_cache
+
+        face_embeddings = crud.get_all_teacher_face_embeddings(db)
+        candidates = []
+        for face_embed in face_embeddings or []:
+            candidates.append((face_embed.teacher_id, embedding_from_json(face_embed.embedding)))
+
+        self._candidate_cache = candidates
+        self._last_loaded_at = now
+        return candidates
 
     async def register_face_id(self, image_data: bytes, teacher_id: int, db: Session) -> Tuple[bool, str]:
         """Register a face embedding for a teacher (no image storage)."""
@@ -31,23 +51,20 @@ class TeacherFaceService:
                 return False, embed_message
 
             target_embedding = embedding_from_json(embedding_json)
-            all_embeddings = crud.get_all_teacher_face_embeddings(db)
+            candidates = self._get_candidates_cached(db)
 
-            candidates = []
-            for face_embed in all_embeddings:
-                if face_embed.teacher_id == teacher_id:
-                    continue
-                candidate_embedding = embedding_from_json(face_embed.embedding)
-                candidates.append((face_embed.teacher_id, candidate_embedding))
+            # Filter candidates: exclude this teacher
+            verify_candidates = [(tid, embed) for tid, embed in candidates if tid != teacher_id]
 
-            if candidates:
-                best_id, best_sim, is_match = find_best_match(target_embedding, candidates)
+            if verify_candidates:
+                best_id, best_sim, is_match = find_best_match(target_embedding, verify_candidates)
                 if is_match:
                     existing_teacher = crud.get_teacher_by_id(db, best_id)
                     existing_name = existing_teacher.full_name if existing_teacher else "Unknown"
                     return False, f"Face already registered for teacher: {existing_name} (Similarity: {best_sim:.2f})"
 
             crud.create_teacher_face_embedding(db, teacher_id, embedding_json)
+            self._invalidate_cache()
             return True, "Face ID registered successfully"
         except Exception as e:
             return False, f"Error registering Face ID: {str(e)}"
@@ -72,14 +89,9 @@ class TeacherFaceService:
                 return False, embed_message, None, None, threshold
 
             target_embedding = embedding_from_json(embedding_json)
-            face_embeddings = crud.get_all_teacher_face_embeddings(db)
-            if not face_embeddings:
+            candidates = self._get_candidates_cached(db)
+            if not candidates:
                 return False, "No Face ID registered", None, None, threshold
-
-            candidates = []
-            for face_embed in face_embeddings:
-                candidate_embedding = embedding_from_json(face_embed.embedding)
-                candidates.append((face_embed.teacher_id, candidate_embedding))
 
             best_teacher_id, best_similarity, is_match = find_best_match(target_embedding, candidates)
             if is_match:

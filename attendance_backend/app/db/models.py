@@ -4,20 +4,6 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .base import Base
 
-class Organization(Base):
-    __tablename__ = "organizations"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True, nullable=False)
-    code = Column(String, unique=True, index=True, nullable=False)
-    status = Column(String, default="active")  # active, inactive
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    # Relationships
-    teachers = relationship("Teacher", back_populates="organization")
-    classes = relationship("Class", back_populates="organization")
-    attendance_settings = relationship("AttendanceSettings", back_populates="organization", uselist=False)
-
 class Teacher(Base):
     __tablename__ = "teachers"
     
@@ -26,19 +12,13 @@ class Teacher(Base):
     full_name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
-    role = Column(String, default="teacher")  # super_admin, admin, teacher
+    role = Column(String, default="teacher")  # admin, teacher
     status = Column(String, default="active")  # active, inactive
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
     classes = relationship("Class", back_populates="teacher")
-    organization = relationship("Organization", back_populates="teachers")
     face_embedding = relationship("TeacherFaceEmbedding", back_populates="teacher", uselist=False)
-
-    @property
-    def organization_name(self):
-        return self.organization.name if self.organization else None
 
 class Class(Base):
     __tablename__ = "classes"
@@ -47,13 +27,11 @@ class Class(Base):
     class_name = Column(String, nullable=False)
     class_code = Column(String, unique=True, index=True, nullable=False)
     teacher_id = Column(Integer, ForeignKey("teachers.id"), nullable=False)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
     teacher = relationship("Teacher", back_populates="classes")
     students = relationship("Student", back_populates="class_obj")
-    organization = relationship("Organization", back_populates="classes")
 
 class Student(Base):
     __tablename__ = "students"
@@ -114,7 +92,6 @@ class AttendanceSettings(Base):
     __tablename__ = "attendance_settings"
 
     id = Column(Integer, primary_key=True, index=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), unique=True, nullable=False)
     school_start_time = Column(String, default="08:00")
     late_cutoff_time = Column(String, default="08:15")
     auto_absent_time = Column(String, default="09:00")
@@ -123,5 +100,3 @@ class AttendanceSettings(Base):
     multiple_checkins = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-    organization = relationship("Organization", back_populates="attendance_settings")

@@ -85,6 +85,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     setState(() => _isLoading = true);
 
     try {
+      // Fetch classes and trigger auto-absent for this teacher's classes on load
+      final classesResult = await ApiService.getClasses();
+      if (classesResult['success'] == true && classesResult['data'] != null) {
+        final List classesData = classesResult['data'] is List 
+            ? classesResult['data'] 
+            : [];
+        if (classesData.isNotEmpty) {
+          final classIds = classesData
+              .map((c) => (c['id'] as num).toInt())
+              .toList();
+          await ApiService.triggerAutoAbsent(classIds);
+        }
+      }
+
       final statsResult = await ApiService.getDashboardStats();
       if (statsResult['success'] && mounted) {
         final data = _resolveStatsData(statsResult['data']);
@@ -386,19 +400,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                 if (mounted) _loadDashboardData();
                               },
                             ),
-                          if (isSuperAdmin)
-                            _buildActionCard(
-                              context,
-                              icon: Icons.apartment_rounded,
-                              label: "Organizations",
-                              description: "Manage orgs",
-                              color: const Color(0xFF78716C),
-                              isDark: isDark,
-                              onTap: () async {
-                                await Navigator.pushNamed(context, '/admin-org-management');
-                                if (mounted) _loadDashboardData();
-                              },
-                            ),
+
                           _buildActionCard(
                             context,
                             icon: Icons.analytics_rounded,

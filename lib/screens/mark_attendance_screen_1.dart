@@ -549,6 +549,7 @@ class _MarkAttendanceScreen1State extends State<MarkAttendanceScreen1>
             checkInType: _checkInType,
             imageFile: File(photo.path),
           );
+          if (!mounted) return;
           if (outingResult['success'] == true) {
             data = Map<String, dynamic>.from(
               (outingResult['data'] ?? const <String, dynamic>{}) as Map,
